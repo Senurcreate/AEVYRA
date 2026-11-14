@@ -9,9 +9,12 @@ venv/
 ml/data/raw/
 # Large raw aerosol frames (about 320 MB)
 ml_aerosols/data/raw/
+# Large raw CO2 frames (about 250 MB)
+ml_co2/data/raw/
 # Checking images / comparison files, not used by the app
 ml/diagnostics/
 ml_aerosols/diagnostics/
+ml_co2/diagnostics/
 
 # OS / editor
 .DS_Store
