@@ -10,6 +10,7 @@ import Comparison from './components/Comparison'
 import Science from './components/Science'
 import { useReducedMotion } from './hooks/useReducedMotion'
 import { useEarthDataset } from './hooks/useEarthDataset'
+import AerosolsExperience from './components/aerosols/AerosolsExperience';
 
 gsap.registerPlugin(ScrollTrigger)
 
