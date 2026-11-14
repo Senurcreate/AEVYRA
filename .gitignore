@@ -7,6 +7,11 @@ venv/
 
 # Large raw data (748 MB)
 ml/data/raw/
+# Large raw aerosol frames (about 320 MB)
+ml_aerosols/data/raw/
+# Checking images / comparison files, not used by the app
+ml/diagnostics/
+ml_aerosols/diagnostics/
 
 # OS / editor
 .DS_Store
