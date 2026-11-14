@@ -5,47 +5,45 @@ function Waveform({ analyser, active, reduced }) {
   const ref = useRef(null)
   useEffect(() => {
     const canvas = ref.current
+    if (!canvas) return
     const context = canvas.getContext('2d')
     if (!context) return
-    const data = analyser ? new Uint8Array(analyser.fftSize) : null
-    let frame
-    const stationary = !analyser || !active || reduced
+    let raf
     function draw() {
       const { width, height } = canvas
       context.clearRect(0, 0, width, height)
-      context.strokeStyle = stationary ? 'rgba(168,228,255,0.3)' : '#A8E4FF'
+      context.strokeStyle = active && !reduced ? '#A8E4FF' : 'rgba(168,228,255,0.3)'
       context.lineWidth = 1.75
       context.beginPath()
-      if (!stationary) analyser.getByteTimeDomainData(data)
-      const count = stationary ? 2 : 180
+      // Supports Tone.Analyser (Float32Array in [-1, 1]).
+      const samples = analyser && active && !reduced ? analyser.getValue() : null
+      const count = samples ? 180 : 2
       for (let i = 0; i < count; i++) {
         const x = width * i / (count - 1)
-        const sample = stationary ? 128 : data[i * 3]
-        const y = height / 2 + (sample - 128) * height / 93
+        const value = samples ? samples[Math.floor(i * samples.length / count)] : 0
+        const y = height / 2 - value * height * 0.42
         if (i === 0) context.moveTo(x, y)
         else context.lineTo(x, y)
       }
       context.stroke()
-      if (!stationary) frame = window.requestAnimationFrame(draw)
+      if (samples) raf = requestAnimationFrame(draw)
     }
     draw()
-    return () => window.cancelAnimationFrame(frame)
-  }, [active, analyser, reduced])
-
+    return () => cancelAnimationFrame(raf)
+  }, [analyser, active, reduced])
   return <canvas className="waveform" ref={ref} width="600" height="76" aria-hidden="true" />
 }
 
 const sounds = [
-  ['reference', 'Reference Tone', 'The steady sound used for comparison.'],
-  ['changing', 'Earth’s Changing Tone', 'The sound that follows the selected data.'],
+  ['reference', 'Reference Tone', 'A fixed D3 reference tone; it does not change with the year.'],
+  ['changing', 'Earth’s Changing Tone', 'A musical soundscape synthesized from the selected year’s extracted image features.'],
 ]
 
-export default function SoundPanel({ audio, track, onTrack, preview, playing, source, reduced, demo, onStop }) {
-  const active = (preview || playing) && Boolean(source) && !audio.muted && Boolean(audio.analyser) && !audio.error
+export default function SoundPanel({ audio, track, onTrack, reduced, demo, available, year }) {
   return <div className="sound-panel angular-glass glass-inset">
     <div className="sound-title"><AudioLines size={16} aria-hidden="true" /><h3>Listen to Earth’s Changing Story</h3></div>
-    <p className="sound-caption sound-intro">Two sounds tell one story. The reference tone stays constant, while Earth’s changing tone responds to scientific measurements over time. Listen to how the relationship between them changes as you explore different years.</p>
-    {demo && <p className="sound-caption sound-demo">In this demo, the changing tone follows fictional values.</p>}
+    <p className="sound-caption sound-intro">Compare a steady reference tone with a data-driven soundscape. Only one plays at a time.</p>
+    {demo && <p className="sound-caption sound-demo">Image features are not independently scientifically verified.</p>}
     <div className="sound-switch" role="group" aria-label="Choose a sound to listen to">
       {sounds.map(([id, label, help]) => <div key={id}>
         <button type="button" aria-pressed={track === id} aria-describedby={'sound-help-' + id}
@@ -53,9 +51,8 @@ export default function SoundPanel({ audio, track, onTrack, preview, playing, so
         <p id={'sound-help-' + id} className="sound-caption">{help}</p>
       </div>)}
     </div>
-    <Waveform analyser={audio.analyser} active={active} reduced={reduced} />
-    {!source && <p className="sound-status">This sound is unavailable for the selected year and region.</p>}
-    {preview && !playing && <button className="quiet-button" type="button" onClick={onStop}>Stop sound</button>}
-    {audio.error && source && (preview || playing) && <p className="sound-status" role="status">{audio.error}</p>}
+    <Waveform analyser={audio.analyser} active={audio.playing && !audio.muted} reduced={reduced} />
+    {!available && <p className="sound-status">No ML features available for {year}.</p>}
+    {audio.error && <p className="sound-status" role="alert">{audio.error}</p>}
   </div>
 }
