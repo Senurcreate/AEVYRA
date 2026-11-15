@@ -1,24 +1,23 @@
 import { ArrowUpRight, AudioLines, Plus, RadioTower, ScanLine } from 'lucide-react'
 import { project } from '../data/project'
+import { earthStories } from '../data/earthStories'
 
 const stages = [
-  [RadioTower, 'We Observe Earth', 'Satellites collect information about our changing planet.'],
-  [ScanLine, 'We Interpret the Data', 'Scientific measurements help us understand changes across years and regions.'],
-  [AudioLines, 'We Turn Data Into Sound', 'Measurements are translated into sound, allowing us to hear patterns and changes.'],
+  [RadioTower, 'We Observe Earth', 'NASA Earth visualizations reveal patterns across our changing planet.'],
+  [ScanLine, 'We Interpret the Data', 'Machine learning groups pixels by brightness or color to extract features from the Night Lights and Aerosols images.'],
+  [AudioLines, 'We Turn Data Into Sound', 'Sonification maps numbers to musical parameters such as pitch. The Night Lights demo lets you hear this using a sample index.'],
 ]
 
-function FAQ({ dataset }) {
-  const questions = [
-    ['What am I listening to?', 'You hear sonification. It turns numerical values into audible differences.'],
-    ['Are these actual sounds recorded from Earth?', 'The sounds are generated from numerical values. In the demo, those values are synthetic.'],
-    ['Where does the scientific data come from?', dataset?.demo ? 'The demo uses synthetic values. Its Earth imagery comes from NASA’s Blue Marble collections.' :
-      dataset?.source ? 'See the dataset attribution in the credits below.' : 'The team’s dataset attribution is pending.'],
-    ['Why does the sound change over time?', dataset?.methodology || 'The final sonification mapping will describe how the sound changes with the measurements.'],
-    ['How are the regions selected?', 'Use the region list or choose a marker on the globe. The project dataset defines the available regions.'],
-    ['What does the baseline sound represent?', dataset?.baselineDescription || 'The project’s baseline definition is pending.'],
-    ['Can I explore different years?', 'Select any year from 2012 to 2023. The explorer indicates where a measurement, sound, or image is unavailable.'],
-  ]
+const questions = [
+  ['What is Aevyra?', 'Aevyra is an interactive project that explores changes on Earth through NASA imagery, image analysis, and sound.'],
+  ['How does Aevyra turn data into sound?', 'Sonification assigns numerical values to properties of a sound, such as pitch. You can hear this in the Night Lights demo.'],
+  ['Are these sounds recorded by NASA?', 'Aevyra generates the demo tones in your browser from an illustrative index. The annual Night Lights images and their pixel statistics have separate sources.'],
+  ['Which Earth datasets are included?', 'Night Lights has annual global maps. GEOS Aerosols has selected frames from a model visualization. DYAMOND Global Carbon Dioxide currently has a NASA preview and its original color scale.'],
+  ['What do the colors represent?', 'Each story explains its own colors beside the player. They show nighttime illumination, aerosol groups, or modeled carbon dioxide in the NASA DYAMOND preview.'],
+  ['Where does the scientific information come from?', 'The credits link to NASA’s Scientific Visualization Studio. The Night Lights and Aerosols figures summarize pixels in the project’s analyzed images.'],
+]
 
+function FAQ() {
   return <div className="faq">
     <h3>Frequently asked questions</h3>
     <div className="faq-list">{questions.map(([question, answer]) =>
@@ -27,7 +26,7 @@ function FAQ({ dataset }) {
   </div>
 }
 
-export default function Science({ dataset }) {
+export default function Science() {
   return <section id="science" className="shell science section-space" aria-labelledby="science-title">
     <div className="section-heading science-heading">
       <h2 id="science-title">The Science<br />Behind the Sound</h2>
@@ -46,12 +45,11 @@ export default function Science({ dataset }) {
       <div className="credits">
         <h3>Credits</h3>
         <p>Created by the {project.team} for the NASA Space Apps Challenge.</p>
-        <p>Hero photograph by Abhishek Mishra via Unsplash. The global demo frames use an Earth portrait by Reto Stöckli and Robert Simmon. Globe texture and regional views come from NASA Earth Observatory’s Blue Marble Next Generation.</p>
-        <a href={project.earthPortraitUrl}>Blue Marble portrait <ArrowUpRight size={14} aria-hidden="true" /></a>
+        <p>Hero photograph by Abhishek Mishra via Unsplash. NASA Earth Observatory’s Blue Marble Next Generation provides the globe texture and illustrative regional views.</p>
         <a href={project.earthMapUrl}>Blue Marble map <ArrowUpRight size={14} aria-hidden="true" /></a>
-        {dataset?.source && <a href={dataset.source.url}>{dataset.source.label} <ArrowUpRight size={14} aria-hidden="true" /></a>}
+        {earthStories.map(({ path, source }) => <a key={path} href={source.url}>{source.label} <ArrowUpRight size={14} aria-hidden="true" /></a>)}
       </div>
-      <FAQ dataset={dataset} />
+      <FAQ />
     </div>
   </section>
 }
