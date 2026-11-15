@@ -69,6 +69,8 @@ function SymphonyPlayer({ dataset, story }) {
   useLayoutEffect(() => { controls.current = mappings }, [mappings])
   const { schedule } = timeline
   const controlsAt = useCallback(position => controls.current.get(schedule.at(position).step) ?? null, [schedule])
+  // The sound travels left to right with the scanner line, which uses this same progress.
+  const scanAt = useCallback(position => schedule.at(position).progress, [schedule])
 
   useEffect(() => {
     audio.applyFrame(frame, kind)
@@ -94,7 +96,7 @@ function SymphonyPlayer({ dataset, story }) {
     if (!kind) return
     const started = audio.status === 'paused' ? audio.resume() : await audio.start(
       track, frame, kind, {
-        controlsAt, offset: timeline.offset, duration: schedule.duration, speed: timeline.speed,
+        controlsAt, scanAt, offset: timeline.offset, duration: schedule.duration, speed: timeline.speed,
         onEnd: timeline.finish, onInterrupt: timeline.pause,
       },
     )

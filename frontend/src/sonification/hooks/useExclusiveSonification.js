@@ -68,6 +68,7 @@ export function useExclusiveSonification() {
         offset: options.offset,
         speed: entry.speed,
         controlsAt: options.controlsAt,
+        scanAt: options.scanAt,
         haptics: hapticPlayer,
         onEnd() {
           entry.cancel()

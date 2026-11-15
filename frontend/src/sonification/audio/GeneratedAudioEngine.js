@@ -2,6 +2,7 @@ import * as Tone from 'tone'
 import { beatSeconds, eventsAtBeat, midiToHz } from '../mappings/referenceProfiles.js'
 import { createDustBuffer, DustGrains, GRAIN_RELEASE } from './DustGrains.js'
 import { NoteVoices, TRANSITION_FADE } from './NoteVoices.js'
+import { sweepPan } from '../playback/schedule.js'
 
 // The aerosols dust texture can be switched off here (the score and mapping stay untouched).
 const DUST_ENABLED = true
@@ -9,6 +10,7 @@ const BASS_CUT_HZ = 75
 // Phone and laptop speakers distort when driven hard, so every story plays about 3 dB quieter than its mix balance.
 const OUTPUT_TRIM = 0.7
 const LOOKAHEAD = 0.080
+const RETRACE = 0.12 // seconds the sweep takes to glide back to the left at a frame change
 const PICKUP = 0.082
 const mixes = {
   'night-lights': { gain: 3.0, reverb: 0.16, decay: 1.85 },
@@ -64,8 +66,9 @@ function makeImpulse(context, seconds) {
 }
 
 export class GeneratedAudioEngine {
-  constructor(kind, mode, { duration = Infinity, offset = 0, speed = 1, controlsAt, onEnd, onError, haptics } = {}) {
+  constructor(kind, mode, { duration = Infinity, offset = 0, speed = 1, controlsAt, scanAt, onEnd, onError, haptics } = {}) {
     this.context = Tone.getContext()
+    this.scanAt = scanAt // scanner progress (0..1) at a score position; the sound travels left to right with it
     this.haptics = this.context.isOffline ? undefined : haptics // optional phone vibration that follows the notes
     this.kind = kind
     this.mode = mode
@@ -95,7 +98,10 @@ export class GeneratedAudioEngine {
         return
       }
 
-      this.level = this.own(new Tone.Gain(0)).connect(this.output)
+      // The dry mix passes through one stereo sweep that follows the scanner line. The room reverb below
+      // stays centred, so the sound moves across a steady space.
+      this.sweep = this.own(new Tone.Panner(0)).connect(this.output)
+      this.level = this.own(new Tone.Gain(0)).connect(this.sweep)
       const movement = kind === 'aerosols' ? this.own(new Tone.Chorus({
         frequency: 0.21, delayTime: 6.8, depth: 0.30, spread: 180, feedback: 0, wet: 0.38,
       })).connect(this.level).start() : null
@@ -195,8 +201,35 @@ export class GeneratedAudioEngine {
     this.output.gain.rampTo(active ? gain : 0, TRANSITION_FADE, active ? Math.max(now, this.startedAt) : now)
   }
 
+  // Keeps the stereo position matched to the scanner line. Called every tick; each call schedules the pan
+  // for a moment slightly ahead, so the automation is smooth even if the page stutters.
+  sweepTo(now) {
+    if (!this.scanAt || !this.sweep) return
+    const t = now + LOOKAHEAD
+    if (t < this.sweepHoldUntil) return // the sweep is flying back to the left; do not interrupt it
+    const latency = this.context.rawContext?.outputLatency ?? this.context.rawContext?.baseLatency ?? 0
+    const position = this.position + (t - this.startedAt + latency) * this.speed
+    const progress = this.scanAt(position)
+    if (!Number.isFinite(progress)) return
+    const target = sweepPan(progress)
+    const pan = this.sweep.pan
+    if (this.lastProgress === undefined) {
+      pan.cancelScheduledValues(now)
+      pan.setValueAtTime(target, Math.max(now, this.startedAt))
+    } else if (progress < this.lastProgress - 0.5) {
+      // The next frame began: glide back to the left instead of jumping, which would click.
+      pan.linearRampToValueAtTime(target, t + RETRACE)
+      this.sweepHoldUntil = t + RETRACE
+    } else {
+      pan.linearRampToValueAtTime(target, t)
+    }
+    this.lastProgress = progress
+  }
+
   resume() {
     if (this.startedAt != null || this.disposed) return
+    this.lastProgress = undefined
+    this.sweepHoldUntil = 0
     this.apply(this.controlsFor(this.position))
     this.startedAt = this.context.currentTime + TRANSITION_FADE + 0.02
     this.updateOutput()
@@ -232,6 +265,7 @@ export class GeneratedAudioEngine {
     this.updateOutput()
     this.cancelTick()
     this.release()
+    this.sweep?.pan.cancelAndHoldAtTime(this.context.currentTime)
     this.haptics?.cancel()
   }
 
@@ -289,6 +323,7 @@ export class GeneratedAudioEngine {
       const time = Math.max(now, this.startedAt + (at - this.position) / this.speed)
       for (const event of eventsAtBeat(this.kind, this.controlsFor(at), beat)) this.play(event, time)
     }
+    this.sweepTo(now)
     // The audio output delay is subtracted so the buzz meets the sound instead of leading it.
     this.haptics?.flush(now, this.context.rawContext?.outputLatency ?? this.context.rawContext?.baseLatency ?? 0)
   }
