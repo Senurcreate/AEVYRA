@@ -51,6 +51,7 @@ function mapNightLights(frame) {
   const pan = 0.22 * (centered(f.centroidX) ?? stripPosition(f.strips, [1, 2, 3]) ?? 0)
   return {
     gain: 0.92 + 0.12 * lit, pan, movement, direction,
+    pulseCount: Math.round(3 * movement), pulseLevel: movement, // rhythmic layer: how much the lights changed since the previous year
     filterHz: 1500 * (3400 / 1500) ** brightness,
     padGain: 0.7 + 0.6 * middle,
     celloGain: 0.76 + 0.48 * dim,
@@ -83,6 +84,7 @@ function mapAerosols(frame) {
   const movement = scale('visualChange', f.changeVsPrev) ?? 0
   return {
     gain: 0.85 + 0.18 * scale('coverage', f.aerosolShare), movement,
+    pulseCount: Math.round(3 * movement), pulseLevel: movement, // rhythmic layer: how much the picture changed since the previous observation
     filterHz: 1400 * (2800 / 1400) ** brightness,
     breathGain: 0.009 + 0.013 * s + 0.008 * a,
     sulfateGain: (0.67 + 0.57 * s) * (1 + 0.1 * delta(sulfate)),
@@ -111,6 +113,10 @@ function mapCo2(frame) {
     padGain: 0.12 + 0.05 * activity,
     pulseGain: 0.02 + 0.10 * activity,
     pulse: Number.isFinite(delta) ? clamp(Math.abs(delta) / 0.04) : 0,
+    // rhythmic layer: change of the hot-colour share; detail layer: how much hot colour there is
+    pulseCount: Number.isFinite(delta) ? Math.round(2 * clamp(Math.abs(delta) / 0.04)) : 0,
+    pulseLevel: Number.isFinite(delta) ? clamp(Math.abs(delta) / 0.04) : 0,
+    glintCount: activity > 0.66 ? 2 : activity > 0.25 ? 1 : 0,
   }
 }
 
@@ -139,6 +145,15 @@ const nightForm = [0, 0, 0, 1, 1, 2, 2, 2, 3, 3, 3, 0]
 const airForm = [0, 0, 1, 1, 2, 2, 2, 3, 3, 3, 1, 0]
 const seededUnit = (seed, phrase) => ((Math.imul(seed ^ (phrase + 1), 1664525) + 1013904223) >>> 0) / 4294967296
 
+// Rhythmic layer: soft pulses on fixed beats of the phrase. The more the data changed since the previous
+// observation, the more of these beats are used (none when nothing changed) and the firmer they are.
+const pulseOrder = { 'night-lights': [3, 0, 5], aerosols: [2, 5, 0], co2: [1, 3] }
+const pulseHit = (kind, slot, count) => {
+  const rank = pulseOrder[kind].indexOf(slot)
+  return rank >= 0 && rank < count
+}
+const pulseVelocity = c => 0.03 + 0.05 * c.pulseLevel
+
 export function eventsAtBeat(kind, c, beat) {
   if (!c) return []
   const slots = kind === 'co2' ? 5 : 6
@@ -164,6 +179,7 @@ export function eventsAtBeat(kind, c, beat) {
     if (sparkleSlot >= 0 && (sparkleSlot + variant) % 3 < c.sparkleCount) {
       add('sparkle', [[upper, octave, third + 12][(variant + sparkleSlot) % 3] + 12], 0.19, c.sparkleGain * dynamic ** 2)
     }
+    if (pulseHit(kind, slot, c.pulseCount)) add('pulse', [fifth], 0.18, pulseVelocity(c) * dynamic)
   } else if (kind === 'aerosols') {
     const [bass, fifth, root, third, upper] = voicings[kind][airForm[phrase]]
     if (slot === 0) {
@@ -179,6 +195,7 @@ export function eventsAtBeat(kind, c, beat) {
     if (slot === (c.movement > 0.64 ? 3 : 5) && seededUnit(c.seed, phrase) < c.saltChance) {
       add('salt', [[third, upper, fifth + 12][variant]], 0.46, 0.017 + 0.010 * c.saltChance)
     }
+    if (pulseHit(kind, slot, c.pulseCount)) add('pulse', [fifth], 0.18, pulseVelocity(c))
   } else if (kind === 'co2') {
     const [bass, root, middle, upper, octave] = voicings[kind][Math.floor(phrase / 3)]
     if (slot === 0 && phrase % 3 === 0) {
@@ -191,6 +208,11 @@ export function eventsAtBeat(kind, c, beat) {
     }
     if (slot === 2 && phrase % 3 === 2) add('piano', [variant === 0 ? upper : octave], 0.83, 0.064 + c.pulseGain * c.pulse * 0.30)
     if (slot === 4 && c.pulse > 0.73) add('piano', [root], 0.63, 0.036 + c.pulseGain * c.pulse * 0.24)
+    if (pulseHit(kind, slot, c.pulseCount)) add('pulse', [root], 0.22, pulseVelocity(c))
+    // Detail layer: faint high glints while there is hot colour in the picture (a rendered-image feature, not ppm).
+    if ((slot === 2 && c.glintCount > 0) || (slot === 4 && c.glintCount > 1)) {
+      add('glint', [(slot === 2 ? upper : octave) + 12], 0.30, 0.014 + 0.022 * c.activity)
+    }
   }
   return events
 }

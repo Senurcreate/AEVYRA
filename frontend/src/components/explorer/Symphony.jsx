@@ -144,7 +144,7 @@ function SymphonyPlayer({ dataset, story }) {
       <PlaybackControls timeline={{ ...timeline, select: selectStep, setSpeed: selectSpeed }} labels={labels}
         status={audio.status} onToggle={toggleTimeline} onStop={stopAudio}
         muted={audio.muted} hasAudio={Boolean(kind)} onMute={() => audio.setMuted(!audio.muted)} />
-      {kind && <SoundPanel audio={audio} available={Boolean(frame)} availabilityExplained={Boolean(hiddenNote)} reduced={reduced} />}
+      {kind && <SoundPanel audio={audio} kind={kind} available={Boolean(frame)} availabilityExplained={Boolean(hiddenNote)} reduced={reduced} />}
     </div>
   </div>
 

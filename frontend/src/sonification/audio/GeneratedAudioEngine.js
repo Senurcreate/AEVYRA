@@ -31,6 +31,7 @@ const patches = {
     piano: { limit: 5, synth: fm('sine', 2, 1.48, [0.019, 0.44, 0.20, 0.72], [0.012, 0.19, 0.032, 0.24]), cutoff: c => c.filterHz, pan: c => c.pan },
     sparkle: { limit: 4, synth: fm('sine', 2.5, 0.62, [0.012, 0.23, 0.08, 0.55], [0.012, 0.15, 0.06, 0.31]), cutoff: () => 4800, pan: c => c.sparklePan },
     rumble: { limit: 2, synth: synth('sine2', [1.15, 0.60, 0.62, 1.30]), cutoff: () => 95, highpass: 27 },
+    pulse: { limit: 2, synth: synth('sine2', [0.006, 0.14, 0, 0.20]), cutoff: () => 1100, pan: () => 0 },
   },
   aerosols: {
     flute: { limit: 4, synth: fm('sine', 2, 0.52, [0.59, 0.48, 0.77, 1.10], [0.43, 0.62, 0.39, 0.96]), cutoff: c => c.filterHz, pan: c => c.pans.flute },
@@ -38,12 +39,15 @@ const patches = {
     smoke: { limit: 6, synth: fm('sine2', 1.41, 0.68, [1.26, 0.87, 0.65, 1.50], [0.96, 0.70, 0.32, 1.12]), cutoff: () => 440, gain: c => c.smokeGain, pan: c => c.pans.smoke },
     dust: { limit: 3, grains: true, highpass: 140, cutoff: c => c.dustHz, pan: c => c.pans.dust, movement: true },
     salt: { limit: 3, synth: synth('sine2', [0.14, 0.22, 0.12, 0.55]), cutoff: () => 1500, pan: c => c.pans.salt },
+    pulse: { limit: 2, synth: synth('sine2', [0.006, 0.14, 0, 0.20]), cutoff: () => 900, pan: () => 0 },
   },
   co2: {
     cello: { limit: 4, synth: fm('triangle3', 1, 0.38, [0.67, 0.90, 0.72, 1.75], [0.48, 0.90, 0.26, 1.35]), cutoff: c => c.filterHz, pan: c => c.pan * 0.7 },
     strings: { limit: 9, synth: synth('triangle4', [1.52, 0.73, 0.72, 2.44]), cutoff: c => c.stringsHz, gain: c => c.padGain, pan: c => c.pan },
     piano: { limit: 4, synth: fm('sine', 2, 0.83, [0.029, 0.65, 0.18, 1.18], [0.020, 0.32, 0.10, 0.67]), cutoff: c => c.filterHz, pan: c => c.pianoPan },
     drone: { limit: 3, synth: synth('sine2', [1.35, 0.58, 0.69, 2.08]), cutoff: () => 305, highpass: 38 },
+    pulse: { limit: 2, synth: synth('sine2', [0.010, 0.20, 0, 0.30]), cutoff: () => 800, pan: () => 0 },
+    glint: { limit: 3, synth: synth('sine', [0.010, 0.25, 0, 0.60]), cutoff: () => 4200, pan: c => c.pianoPan },
   },
 }
 
@@ -81,6 +85,7 @@ export class GeneratedAudioEngine {
     this.position = offset
     this.resetBeat()
     this.layers = {}
+    this.mutedVoices = new Set() // voices switched off from the "Sound layers" panel
     this.nodes = []
 
     try {
@@ -161,15 +166,24 @@ export class GeneratedAudioEngine {
       this.release(now)
       return
     }
-    for (const { filter, pan, gain, patch } of Object.values(this.layers)) {
+    for (const [name, { filter, pan, gain, patch }] of Object.entries(this.layers)) {
       filter.frequency.rampTo(patch.cutoff(controls), 0.29, now)
       pan.pan.rampTo(patch.pan?.(controls) ?? 0, 0.29, now)
-      gain.gain.rampTo(patch.gain?.(controls) ?? 1, 0.29, now)
+      gain.gain.rampTo(this.mutedVoices.has(name) ? 0 : patch.gain?.(controls) ?? 1, 0.29, now)
     }
     if (recovering) {
       this.updateOutput()
       this.restoreSustain(now + LOOKAHEAD)
     }
+  }
+
+  // Switches one voice on or off with a short fade, so listeners can hear what each layer adds.
+  setVoiceMuted(name, muted) {
+    if (muted) this.mutedVoices.add(name)
+    else this.mutedVoices.delete(name)
+    const layer = this.layers[name]
+    if (!layer || !this.controls) return
+    layer.gain.gain.rampTo(muted ? 0 : layer.patch.gain?.(this.controls) ?? 1, 0.15)
   }
 
   setMuted(muted) {
@@ -276,7 +290,7 @@ export class GeneratedAudioEngine {
   // `feel` is false when held notes are only being restored after a pause or seek: they sound again, but are not new hits.
   play(event, time, seconds = event.seconds, feel = true) {
     const layer = this.layers[event.voice]
-    if (!layer) return // layer switched off (see DUST_ENABLED)
+    if (!layer || this.mutedVoices.has(event.voice)) return // layer switched off (DUST_ENABLED or the layers panel)
     const { voices } = layer
     const hold = seconds / this.speed
     if (feel) this.haptics?.note(this.kind, event, time)

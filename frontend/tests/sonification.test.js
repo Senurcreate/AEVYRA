@@ -153,9 +153,9 @@ test('visualization labels use verified time stamps or ordinal observations', ()
 
 test('all intended layers play in the twelve-observation global arrangements', () => {
   const layerNames = {
-    'night-lights': ['cello', 'piano', 'rumble', 'sparkle', 'strings'],
-    aerosols: ['dust', 'flute', 'salt', 'smoke', 'sulfate'],
-    co2: ['cello', 'drone', 'piano', 'strings'],
+    'night-lights': ['cello', 'piano', 'pulse', 'rumble', 'sparkle', 'strings'],
+    aerosols: ['dust', 'flute', 'pulse', 'salt', 'smoke', 'sulfate'],
+    co2: ['cello', 'drone', 'glint', 'piano', 'pulse', 'strings'],
   }
   for (const [kind, dataset] of Object.entries(featureDatasets)) {
     const schedule = createFrameSchedule(dataset.frames.map(frame => frame[dataset.step]))

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useHaptics } from '../../sonification/hooks/useHaptics'
+import { soundLayerLabels, soundLayerNames, soundLayers } from '../../sonification/mappings/soundLayers'
 
 
 function Waveform({ analyser, active, reduced }) {
@@ -76,6 +77,7 @@ function Waveform({ analyser, active, reduced }) {
 
 export default function SoundPanel({
   audio,
+  kind,
   available,
   availabilityExplained,
   reduced,
@@ -103,6 +105,39 @@ export default function SoundPanel({
 
       {audio.status === 'loading' && (
         <p className="sound-status" role="status">Preparing audio…</p>
+      )}
+
+      {kind && soundLayers[kind] && (
+        <details className="sound-layers">
+          <summary>Sound layers</summary>
+          <p className="sound-status">Five layers make up the sound. Switch one off to hear what it adds.</p>
+          <ul>
+            {soundLayerNames.map(name => {
+              const layer = soundLayers[kind][name]
+              const off = audio.mutedLayers.includes(name)
+              return (
+                <li key={name}>
+                  <div className="layer-text">
+                    <strong>{soundLayerLabels[name]}</strong>
+                    <span className="layer-basis">{layer.basis === 'data' ? 'Follows the data' : 'Atmosphere only'}</span>
+                    <span>{layer.plain}</span>
+                  </div>
+                  <button
+                    className="layer-switch"
+                    type="button"
+                    role="switch"
+                    aria-checked={!off}
+                    aria-label={soundLayerLabels[name]}
+                    onClick={() => audio.toggleLayer(kind, name)}
+                  >
+                    <span className="layer-switch-text layer-switch-on" aria-hidden="true">ON</span>
+                    <span className="layer-switch-text layer-switch-off" aria-hidden="true">OFF</span>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        </details>
       )}
 
       {haptics.supported && (
