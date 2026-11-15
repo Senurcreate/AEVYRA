@@ -77,15 +77,23 @@ export default function Hero({ story, storyCount }) {
     const context = gsap.context(() => {
       if (intro && ready) {
         gsap.to('.intro-screen', { opacity: 0, duration: 0.45, delay: 0.52, onComplete: dismiss })
-      } else if (!intro) {
-        gsap.timeline({ defaults: { ease: 'power2.out' } })
-          .from('.hero-earth', { opacity: 0, scale: 0.98, duration: 1.2 })
-          .from('.hero-wordmark', { opacity: 0, y: 13, duration: 0.95 }, 0.04)
-          .from('.hero-message', { opacity: 0, y: 14, duration: 0.85 }, 0.2)
       }
     }, root)
     return () => context.revert()
   }, [intro, ready, reduced])
+
+  // The entrance animation must not depend on `ready`: the video reports ready after the page is already
+  // visible, and re-running it then made the text and globe jump back and fade in a second time.
+  useLayoutEffect(() => {
+    if (reduced || intro) return
+    const context = gsap.context(() => {
+      gsap.timeline({ defaults: { ease: 'power2.out' } })
+        .from('.hero-earth', { opacity: 0, scale: 0.98, duration: 1.2 })
+        .from('.hero-wordmark', { opacity: 0, y: 13, duration: 0.95 }, 0.04)
+        .from('.hero-message', { opacity: 0, y: 14, duration: 0.85 }, 0.2)
+    }, root)
+    return () => context.revert()
+  }, [intro, reduced])
 
   return <section id="top" className={'hero' + (story ? ' story-hero' : '')} aria-labelledby="hero-title" ref={root}>
     {intro && <div className="intro-screen">
@@ -100,13 +108,33 @@ export default function Hero({ story, storyCount }) {
       <div className={'hero-earth' + (artwork ? ' hero-story-art' : '')} aria-hidden="true">
         <div className="hero-earth-parallax">
           <div className="hero-earth-drift">
-            {hasVideo &&
-              <video autoPlay muted loop playsInline poster={project.heroImage} onError={() => setVideoFailed(true)} className="hero-video" src={project.heroVideo} />}
-            <img ref={poster} src={image} srcSet={!artwork && project.heroImageSmall ? project.heroImageSmall + ' 640w, ' + image + ' 1200w' : undefined} sizes={artwork ? undefined : imageSizes} alt="" fetchPriority="high" width={artwork ? undefined : 1200} height={artwork ? undefined : 1062} onLoad={() => setReady(true)} onError={() => { setReady(true); setImageFailed(true) }} hidden={imageFailed} />
-            {!artwork && !imageFailed && !hasVideo && <HeroAtmosphere reduced={reduced} />}
-            {!artwork && <svg className="horizon-particles" viewBox="0 0 1200 1062" fill="currentColor">
-              {horizonParticles.map(({ x, y, radius }, index) => <circle key={x} cx={x} cy={y} r={radius} style={{ animationDelay: -index * 0.73 + 's' }} />)}
-            </svg>}
+            {hasVideo ? (
+  <video
+    autoPlay
+    muted
+    loop
+    playsInline
+    preload="metadata"
+    poster={project.heroPoster ?? project.heroImage}
+    onLoadedData={() => setReady(true)}
+    onError={() => setVideoFailed(true)}
+    className="hero-video"
+    src={project.heroVideo}
+  />
+) : (
+  <img
+    ref={poster}
+    src={image}
+    alt=""
+    fetchPriority="high"
+    onLoad={() => setReady(true)}
+    onError={() => {
+      setReady(true)
+      setImageFailed(true)
+    }}
+    hidden={imageFailed}
+  />
+)}
           </div>
         </div>
       </div>
