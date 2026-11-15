@@ -129,7 +129,10 @@ export default function SoundPanel({
                     aria-checked={!off}
                     aria-label={soundLayerLabels[name]}
                     onClick={() => audio.toggleLayer(kind, name)}
-                  />
+                  >
+                    <span className="layer-switch-text layer-switch-on" aria-hidden="true">ON</span>
+                    <span className="layer-switch-text layer-switch-off" aria-hidden="true">OFF</span>
+                  </button>
                 </li>
               )
             })}

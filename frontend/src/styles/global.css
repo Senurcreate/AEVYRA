@@ -479,11 +479,17 @@ details p { color: #b7b9bc; font-size: 1rem; line-height: 1.6; padding: 0 var(--
 .layer-text { display: grid; gap: 2px; min-width: 0; font-size: .8125rem; line-height: 1.4; color: #c4ccd1; }
 .layer-text strong { color: var(--text); font-weight: 600; }
 .layer-basis { font: .6875rem var(--mono); color: #8fa0a8; text-transform: uppercase; letter-spacing: .06em; }
-/* Layer switch: a small pill track with a round thumb, right-aligned in the same 52px footprint the old text button had. The button keeps a 44px hit area; only the track is drawn small. */
-.layer-switch { position: relative; flex: none; align-self: flex-start; width: 52px; height: var(--hit-area); margin: -11px 0 0; padding: 0; border: 0; background: transparent; }
-.layer-switch::before { content: ''; position: absolute; right: 0; top: 50%; width: 40px; height: 22px; transform: translateY(-50%); border: 1px solid var(--line); border-radius: 11px; background: transparent; transition: border-color .2s var(--ease), background-color .2s var(--ease); }
-.layer-switch::after { content: ''; position: absolute; left: 15px; top: 50%; width: 16px; height: 16px; margin-top: -8px; border-radius: 50%; background: var(--muted); transform: translateX(0); transition: transform .2s var(--ease), background-color .2s var(--ease); }
+/* Layer switch: a pill track with a round thumb and an ON / OFF label on the side opposite the thumb. The button is 60px wide
+   but takes only the 52px the old text button did (negative margin), so the row layout is unchanged. It keeps a 44px hit area. */
+.layer-switch { position: relative; flex: none; align-self: flex-start; width: 60px; height: var(--hit-area); margin: -12px 0 0 -8px; padding: 0; border: 0; background: transparent; }
+.layer-switch::before { content: ''; position: absolute; left: 0; top: 50%; width: 60px; height: 28px; transform: translateY(-50%); border: 1px solid var(--line); border-radius: 14px; background: transparent; transition: border-color .2s var(--ease), background-color .2s var(--ease); }
+.layer-switch::after { content: ''; position: absolute; left: 4px; top: 50%; width: 20px; height: 20px; margin-top: -10px; border-radius: 50%; background: var(--muted); transform: translateX(0); transition: transform .2s var(--ease), background-color .2s var(--ease); }
+.layer-switch-text { position: absolute; top: 50%; width: 32px; transform: translateY(-50%); font: 500 10px/1 var(--mono); letter-spacing: .06em; text-align: center; text-transform: uppercase; pointer-events: none; transition: opacity .2s var(--ease); }
+.layer-switch-on { left: 4px; color: var(--ice); opacity: 0; }
+.layer-switch-off { left: 24px; color: var(--muted); opacity: 1; }
 .layer-switch:not(:disabled):hover::before { border-color: #6992a5; }
 .layer-switch[aria-checked='true']::before { border-color: var(--ice); background: rgb(168 228 255 / .18); }
-.layer-switch[aria-checked='true']::after { background: var(--ice); transform: translateX(18px); }
+.layer-switch[aria-checked='true']::after { background: var(--ice); transform: translateX(32px); }
+.layer-switch[aria-checked='true'] .layer-switch-on { opacity: 1; }
+.layer-switch[aria-checked='true'] .layer-switch-off { opacity: 0; }
 .sound-layers .sound-status { margin: 8px 0 0; font-size: .8125rem; }
