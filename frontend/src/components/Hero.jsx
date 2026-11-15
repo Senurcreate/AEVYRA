@@ -100,13 +100,33 @@ export default function Hero({ story, storyCount }) {
       <div className={'hero-earth' + (artwork ? ' hero-story-art' : '')} aria-hidden="true">
         <div className="hero-earth-parallax">
           <div className="hero-earth-drift">
-            {hasVideo &&
-              <video autoPlay muted loop playsInline poster={project.heroImage} onError={() => setVideoFailed(true)} className="hero-video" src={project.heroVideo} />}
-            <img ref={poster} src={image} srcSet={!artwork && project.heroImageSmall ? project.heroImageSmall + ' 640w, ' + image + ' 1200w' : undefined} sizes={artwork ? undefined : imageSizes} alt="" fetchPriority="high" width={artwork ? undefined : 1200} height={artwork ? undefined : 1062} onLoad={() => setReady(true)} onError={() => { setReady(true); setImageFailed(true) }} hidden={imageFailed} />
-            {!artwork && !imageFailed && !hasVideo && <HeroAtmosphere reduced={reduced} />}
-            {!artwork && <svg className="horizon-particles" viewBox="0 0 1200 1062" fill="currentColor">
-              {horizonParticles.map(({ x, y, radius }, index) => <circle key={x} cx={x} cy={y} r={radius} style={{ animationDelay: -index * 0.73 + 's' }} />)}
-            </svg>}
+            {hasVideo ? (
+  <video
+    autoPlay
+    muted
+    loop
+    playsInline
+    preload="metadata"
+    poster={project.heroImage}
+    onLoadedData={() => setReady(true)}
+    onError={() => setVideoFailed(true)}
+    className="hero-video"
+    src={project.heroVideo}
+  />
+) : (
+  <img
+    ref={poster}
+    src={image}
+    alt=""
+    fetchPriority="high"
+    onLoad={() => setReady(true)}
+    onError={() => {
+      setReady(true)
+      setImageFailed(true)
+    }}
+    hidden={imageFailed}
+  />
+)}
           </div>
         </div>
       </div>

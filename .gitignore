@@ -3,7 +3,6 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
-.env
 
 # Large raw data (748 MB)
 ml/data/raw/
@@ -19,7 +18,6 @@ ml_co2/diagnostics/
 # OS / editor
 .DS_Store
 Thumbs.db
-.vscode/
 .idea/
 
 #frontend
@@ -40,8 +38,6 @@ coverage/
 *.[tT][iI][fF].[gG][zZ]
 *.[tT][iI][fF][fF].[gG][zZ]
 
-.env
-.env.*
 !.env.example
 *.local
 *.pem
@@ -49,3 +45,4 @@ coverage/
 
 
 
+config.bat
