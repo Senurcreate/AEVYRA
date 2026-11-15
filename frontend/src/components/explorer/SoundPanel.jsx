@@ -123,14 +123,13 @@ export default function SoundPanel({
                     <span>{layer.plain}</span>
                   </div>
                   <button
-                    className="quiet-button"
+                    className="layer-switch"
                     type="button"
-                    aria-pressed={!off}
-                    aria-label={soundLayerLabels[name] + (off ? ' is off. Turn on' : ' is on. Turn off')}
+                    role="switch"
+                    aria-checked={!off}
+                    aria-label={soundLayerLabels[name]}
                     onClick={() => audio.toggleLayer(kind, name)}
-                  >
-                    {off ? 'Off' : 'On'}
-                  </button>
+                  />
                 </li>
               )
             })}
