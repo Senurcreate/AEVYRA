@@ -470,3 +470,15 @@ details p { color: #b7b9bc; font-size: 1rem; line-height: 1.6; padding: 0 var(--
   .scan-overlay { display: none; }
   .shooting-star-lane { display: none; }
 }
+
+/* Sound layers panel: what each of the five layers is, and a switch for each */
+.sound-layers { width: 100%; border-top: 1px solid var(--line-soft); padding-top: 10px; }
+.sound-layers summary { cursor: pointer; font: .75rem var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ice); }
+.sound-layers ul { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 10px; }
+.sound-layers li { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.layer-text { display: grid; gap: 2px; min-width: 0; font-size: .8125rem; line-height: 1.4; color: #c4ccd1; }
+.layer-text strong { color: var(--text); font-weight: 600; }
+.layer-basis { font: .6875rem var(--mono); color: #8fa0a8; text-transform: uppercase; letter-spacing: .06em; }
+.sound-layers .quiet-button { flex: none; min-width: 52px; }
+.sound-layers .quiet-button[aria-pressed='false'] { opacity: .6; }
+.sound-layers .sound-status { margin: 8px 0 0; font-size: .8125rem; }

@@ -23,6 +23,7 @@ export const hapticVoices = {
     sparkle: { weight: 0.8, range: [0.006, 0.039] },
     cello: { weight: 0.6, range: [0.068, 0.084] },
     strings: { weight: 0.35, range: [0.038, 0.048] },
+    pulse: { weight: 0.5, range: [0.031, 0.081] },
     rumble: { weight: 0 },
   },
   aerosols: {
@@ -31,12 +32,15 @@ export const hapticVoices = {
     dust: { weight: 0.6, range: [0.0185, 0.0416] },
     smoke: { weight: 0.5, range: [0.039, 0.039] },
     sulfate: { weight: 0.4, range: [0.052, 0.052] },
+    pulse: { weight: 0.5, range: [0.040, 0.080] },
   },
   co2: {
     cello: { weight: 1.0, range: [0.095, 0.123] },
     piano: { weight: 0.9, range: [0.04, 0.10] },
     strings: { weight: 0.35, range: [0.51, 0.51] },
     drone: { weight: 0 },
+    pulse: { weight: 0.5, range: [0.043, 0.080] },
+    glint: { weight: 0.6, range: [0.024, 0.036] },
   },
 }
 
