@@ -85,6 +85,22 @@ Per frame (all shares are fractions of pixels, **0–1**; floats rounded to 6 de
 Deterministic: two consecutive full runs give byte-identical `features.json` and WebP files
 (`scripts/run_twice_check.py`).
 
+## Regions (explore by region)
+
+Top level `regions` lists 7 regions: `antarctica, africa, europe, southAmerica, northAmerica, oceania, asia`, each with
+its lon/lat boxes, `pixelCount`, `mapShare` and `pixelBox` (x0, y0, x1, y1 on the full map).
+Every frame has `frames[i].regions.<id>` with the same kind of numbers as the whole map, but computed from that
+region's pixels only (full resolution, same K-means, nothing resampled):
+`tierShares, litShare, meanBrightness, centroidLon (degrees), changeVsPrev, grewShare, fadedShare, strips, baselineLitShare`
+
+Rules and limits:
+- Regions are lon/lat RECTANGLES on the flat map (`scripts/regions.py`), not coastlines: they include nearby sea.
+  Each pixel belongs to the first matching region, so regions never overlap. Open ocean far from land is in no region.
+- Shares are shares of the region's own pixels (not of the whole map).
+- Strips run west to east across the region's pixel box (48 strips). A strip with no region pixels is `null`.
+- Old whole-map fields are unchanged (checked: identical to the version before regions were added).
+- Same colour/brightness caveats as above: shares of a rendered image, not measured amounts.
+
 ## Rerun
 
 ```

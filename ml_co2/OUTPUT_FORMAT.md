@@ -81,6 +81,32 @@ What moves (12 frames): `hot` about 0.0003–0.054 (the clearest signal, but mix
 `grayWhite` about 0.005–0.092 (Sahara facing the camera drives it: rotation, not CO₂), `brownDark` 0.14–0.25,
 `brownLight` 0.07–0.14, `clear` 0.56–0.72.
 
+## Regions (explore by region) - approximate
+
+Top level `regions` lists 7 regions (`antarctica, africa, europe, southAmerica, northAmerica, oceania, asia`) with their
+lon/lat boxes. Every frame has `frames[i].regions.<id>` and `frames[i].camera`.
+
+How it works: the globe rotates, so which region faces the camera changes. NASA does not publish the camera angle, so
+`scripts/fit_camera.py` ESTIMATED the centre longitude/latitude of every frame by matching a flat world map (the night-lights
+picture, used only as a geometry reference) to the frame. Coastlines were checked by eye on all 12 frames and sit on the real
+coastlines; expected error is a few degrees (up to about 7 on the dark night-side frame 513). Each disc pixel is then turned
+into lon/lat and given a region (same box rules as the other datasets, `scripts/regions.py`).
+
+Per region per frame:
+`visibleFraction` (share of the region's area facing the camera), `reliable` (`visibleFraction >= 0.5`), `pixelCount`,
+`clusterShares, groupShares, meanBrightness, groupCentroidLon / groupCentroidLat (degrees), groupShareDeltaVsPrev, strips`.
+If no pixel of the region is visible, the numbers are `null`.
+
+Rules and limits:
+- Numbers describe only the VISIBLE part of a region, as a share of the visible pixels. A region seen at 25% shows only that quarter.
+  Use `reliable` (or `visibleFraction`) before showing or sonifying a region; many regions are not reliable in many frames.
+- Pixels near the globe edge are squashed, and still count the same as centre pixels.
+- `groupShareDeltaVsPrev` per region mixes real change with rotation (different parts of the region come into view).
+- `strips` run west to east in longitude across the region's box (48 strips); a strip with no visible pixels is `null`.
+- Boxes are rectangles, not coastlines, and include nearby sea.
+- Whole-globe fields are unchanged (checked identical to the version before regions).
+- Of all the groups, only `hot` is a real CO2 signal (see the top of this file). In regions, `hot` is the one to use.
+
 ## How it was made
 
 1. `scripts/download.py` – downloads the 4K orbit video (`...orbit_2160p30.mp4`, ~70 MB) and extracts the 12 frames as
@@ -113,6 +139,7 @@ pip install -r requirements.txt
 cd scripts
 python download.py          # ~70 MB video into ../data/raw, extracts 12 frames
 python verify_inputs.py
+python fit_camera.py        # camera angles -> camera.json (~10 min; camera.json is already included)
 python build_features.py    # frames, features.json, diagnostics (~30 s)
 python make_sample.py
 python run_twice_check.py   # optional determinism check
