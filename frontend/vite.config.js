@@ -11,6 +11,7 @@ export default defineConfig({
         searchForWorkspaceRoot(fileURLToPath(new URL('.', import.meta.url))),
         fileURLToPath(new URL('../ml/output', import.meta.url)),
         fileURLToPath(new URL('../ml_aerosols/output', import.meta.url)),
+        fileURLToPath(new URL('../ml_co2/output', import.meta.url)),
       ],
     },
   },

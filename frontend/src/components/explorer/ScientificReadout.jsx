@@ -23,7 +23,7 @@ function ColorLegend({ legend, source }) {
   </div>
 }
 
-export default function ScientificReadout({ story, record, name, stepLabel, demoRegion }) {
+export default function ScientificReadout({ story, record, name, stepLabel }) {
   return <div className="readout angular-glass glass-inset">
     <div className="readout-head">
       <h3 className="instrument-label"><i className="signal-dot" /> {story.title}</h3>
@@ -42,7 +42,6 @@ export default function ScientificReadout({ story, record, name, stepLabel, demo
         </div>
       })}
     </dl>
-    {demoRegion && <p className="readout-explanation">Regional views use illustrative imagery and demo audio. The image analysis covers the global maps.</p>}
     <div className="readout-explanation">
       <h4>What Are We Seeing?</h4>
       <p>{story.seeing}</p>

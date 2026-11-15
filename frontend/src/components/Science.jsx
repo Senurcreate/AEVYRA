@@ -45,7 +45,7 @@ export default function Science() {
       <div className="credits">
         <h3>Credits</h3>
         <p>Created by the {project.team} for the NASA Space Apps Challenge.</p>
-        <p>Hero photograph by Abhishek Mishra via Unsplash. NASA Earth Observatory’s Blue Marble Next Generation provides the globe texture and illustrative regional views.</p>
+        <p>Hero photograph by Abhishek Mishra via Unsplash. NASA Earth Observatory’s Blue Marble Next Generation provides the globe texture.</p>
         <a href={project.earthMapUrl}>Blue Marble map <ArrowUpRight size={14} aria-hidden="true" /></a>
         {earthStories.map(({ path, source }) => <a key={path} href={source.url}>{source.label} <ArrowUpRight size={14} aria-hidden="true" /></a>)}
       </div>

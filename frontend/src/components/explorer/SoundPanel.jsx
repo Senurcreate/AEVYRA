@@ -104,6 +104,7 @@ export default function SoundPanel({
             key={id}
             type="button"
             aria-pressed={track === id}
+            disabled={id === 'changing' && !available}
             onClick={() => onTrack(id)}
           >
             {label}
@@ -119,11 +120,11 @@ export default function SoundPanel({
 
       {!available && (
         <p className="sound-status">
-          Sonification is unavailable for this view.
+          ML features are unavailable for this frame and region.
         </p>
       )}
 
-      {audio.playing && (
+      {audio.status !== 'idle' && (
         <button
           className="quiet-button"
           type="button"

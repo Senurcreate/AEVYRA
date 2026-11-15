@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { loadEarthDataset, localDataset, shouldUseBundledNightLights } from '../services/earthApi.js'
-import { nightLightsDataset, nightLightsDemoDataset } from '../data/mlDatasets.js'
+import { nightLightsDataset } from '../data/mlDatasets.js'
 
-const dataset = localDataset?.demo ? nightLightsDemoDataset : shouldUseBundledNightLights ? nightLightsDataset : localDataset
+const dataset = localDataset?.demo || shouldUseBundledNightLights ? nightLightsDataset : localDataset
 const initialState = { dataset, status: dataset ? 'ready' : 'loading', error: '' }
 
 export function useEarthDataset(enabled = true) {

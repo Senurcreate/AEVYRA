@@ -1,53 +1,15 @@
-import nightLightsFeatures from '../../../ml/output/features.json'
-import aerosolFeatures from '../../../ml_aerosols/output/features.json'
-import co2Features from './co2.features.json'
-import { demoData } from './demoData'
-import { parseDataset } from '../services/earthData'
+import { featureDatasets, isShare } from '../sonification/adapters/mlFeatures.js'
+import { parseDataset } from '../services/earthData.js'
+import { observationLabels } from './observationLabels.js'
 
 const nightLightsImages = import.meta.glob('../../../ml/output/frames/*.webp', { eager: true, query: '?url&no-inline', import: 'default' })
 const co2Images = import.meta.glob('../../../ml_co2/output/frames/*.webp', { eager: true, query: '?url&no-inline', import: 'default' })
 const aerosolImages = import.meta.glob('../../../ml_aerosols/output/frames/*.webp', { eager: true, query: '?url&no-inline', import: 'default' })
 
-const isShare = value => Number.isFinite(value) && value >= 0 && value <= 1
 const pixelShare = share => isShare(share) ? { value: share * 100, unit: '% of image pixels' } : null
-
-const nightLightsData = {
-  title: 'Night Lights',
-  description: 'Annual NASA visualization frames. The values describe the share of pixels classified as lights in each rendering.',
-  source: { label: 'NASA SVS · Change in Night Lights', url: nightLightsFeatures.sourceUrl },
-  methodology: 'The project groups bright pixels in the rendered frames into three brightness tiers. The lit pixel share combines those tiers.',
-  regions: [],
-  records: nightLightsFeatures.frames.map(({ year, image, litShare, meanBrightness }) => ({
-    year,
-    regionId: 'global',
-    name: 'Lit pixel share',
-    value: pixelShare(litShare)?.value,
-    unit: '%',
-    figures: [pixelShare(litShare), isShare(meanBrightness) ? { value: meanBrightness, unit: 'Normalized brightness of lit pixels (0–1)' } : null],
-    image: {
-      src: nightLightsImages['../../../ml/output/frames/' + image],
-      alt: 'NASA global map of the annual average night lights in ' + year,
-      framing: 'svs-night-lights',
-    },
-  })),
-}
-
-export const nightLightsDataset = parseDataset(nightLightsData)
-
-const demoAudioByYear = new Map(demoData.records.filter(record => record.regionId === 'global').map(record => [record.year, record.audio]))
-export const nightLightsDemoDataset = {
-  ...parseDataset({
-    ...nightLightsData,
-    regions: demoData.regions,
-    globeTexture: demoData.globeTexture,
-    records: [
-      ...nightLightsData.records.map(record => ({ ...record, audio: demoAudioByYear.get(record.year) })),
-      ...demoData.records.filter(record => record.regionId !== 'global'),
-    ],
-  }),
-  demoAudio: true,
-  demoRegions: true,
-}
+const brightness = value => isShare(value) ? { value, unit: 'Normalized image brightness (0–1)' } : null
+const aerosolLabels = observationLabels('aerosols')
+const co2Labels = observationLabels('co2')
 
 export const aerosolGroups = {
   seaSalt: ['Sea salt', 'Blue'],
@@ -57,56 +19,71 @@ export const aerosolGroups = {
 }
 
 function leadingAerosolGroup(groupShares) {
-  return aerosolFeatures.groups.reduce((leading, group, index) => {
+  return featureDatasets.aerosols.groups.reduce((leading, group, index) => {
     const category = aerosolGroups[group]?.[0]
-    const share = pixelShare(groupShares?.[index])
+    const share = pixelShare(groupShares[index])
     if (category && share && share.value > (leading?.value ?? 0)) return { ...share, category }
     return leading
   }, null)
 }
 
-const aerosolFrames = [...aerosolFeatures.frames].sort((a, b) => a.order - b.order)
+function createDataset(kind, { images, alt, figures, measurement, attribution, ...info }) {
+  const source = featureDatasets[kind]
+  const regions = source.regions
+  const regionIds = ['global', ...regions.map(region => region.id)]
+  const records = source.frames.flatMap(frame => regionIds.flatMap(regionId => {
+    const step = frame[source.step]
+    const selected = source.get(step, regionId)
+    if (!selected) return []
+    const values = figures(selected.values)
+    return [{
+      [source.step]: step,
+      regionId,
+      name: measurement,
+      value: values[0]?.value,
+      unit: '%',
+      figures: values,
+      image: { src: images[frame.image], alt: alt(step), framing: 'svs-' + kind },
+    }]
+  }))
+  return parseDataset({
+    ...info, regions, records, source: { label: attribution, url: source.sourceUrl },
+  }, { steps: source.frames.map(frame => frame[source.step]) })
+}
 
-export const aerosolDataset = parseDataset({
+function byFileName(images) {
+  return Object.fromEntries(Object.entries(images).map(([path, url]) => [path.split('/').at(-1), url]))
+}
+
+export const nightLightsDataset = createDataset('night-lights', {
+  title: 'Night Lights',
+  description: 'Annual NASA visualization frames. The values describe the share of pixels classified as lights in each rendering.',
+  attribution: 'NASA SVS · Change in Night Lights',
+  methodology: 'The project groups bright pixels in the rendered frames into three brightness tiers. The lit pixel share combines those tiers.',
+  measurement: 'Lit pixel share',
+  images: byFileName(nightLightsImages),
+  alt: year => 'NASA global map of the annual average night lights in ' + year,
+  figures: f => [pixelShare(f.litShare), brightness(f.meanBrightness)],
+})
+
+export const aerosolDataset = createDataset('aerosols', {
   title: 'GEOS Aerosols',
-  description: 'Selected frames from NASA’s August 1 to September 14, 2024 visualization. The timeline uses source frame numbers because the selected frames are unevenly spaced.',
-  source: { label: 'NASA SVS · GEOS Aerosols', url: aerosolFeatures.sourceUrl },
+  description: 'Selected observations from NASA’s August 1 to September 14, 2024 visualization. The sampled observations are unevenly spaced.',
+  attribution: 'NASA SVS · GEOS Aerosols',
   methodology: 'The project groups colours in the visualization and calculates the percentage of pixels assigned to aerosol colours.',
-  regions: [],
-  records: aerosolFrames.map(({ frameIndex, image, aerosolShare, groupShares }) => ({
-    frameIndex,
-    regionId: 'global',
-    name: 'Aerosol-coloured pixel share',
-    value: pixelShare(aerosolShare)?.value,
-    unit: '%',
-    figures: [pixelShare(aerosolShare), leadingAerosolGroup(groupShares)],
-    image: {
-      src: aerosolImages['../../../ml_aerosols/output/frames/' + image],
-      alt: 'Global GEOS Aerosols model visualization, source frame ' + frameIndex,
-      framing: 'svs-geos-aerosols',
-    },
-  })),
-}, { steps: aerosolFrames.map(({ frameIndex }) => frameIndex) })
+  measurement: 'Aerosol-coloured pixel share',
+  images: byFileName(aerosolImages),
+  alt: step => 'Global GEOS Aerosols model visualization, ' + aerosolLabels.format(step),
+  figures: f => [pixelShare(f.aerosolShare), leadingAerosolGroup(f.groupShares)],
+})
 
-
-const co2Frames = [...co2Features.frames].sort((a, b) => a.order - b.order)
-export const co2Dataset = parseDataset({
+export const co2Dataset = createDataset('co2', {
   title: 'CO₂',
-  description: 'Image-colour features from NASA CO₂ visualization; these are not measured ppm values.',
-  source: { label: 'NASA SVS · CO₂', url: co2Features.sourceUrl },
-  methodology: 'Rendered globe colours are grouped into visual categories; hot-colour share is an artistic proxy, not a CO₂ measurement.',
-  regions: [],
-  records: co2Frames.map(({ frameNumber, image, groupShares, meanBrightness }) => ({
-    frameNumber,
-    regionId: 'global',
-    name: 'Hot-colour pixel share',
-    value: pixelShare(groupShares[co2Features.groups.indexOf('hot')])?.value,
-    unit: '%',
-    figures: [pixelShare(groupShares[co2Features.groups.indexOf('hot')]), isShare(meanBrightness) ? { value: meanBrightness, unit: 'Normalized image brightness (0–1)' } : null],
-    image: {
-      src: co2Images['../../../ml_co2/output/frames/' + image],
-      alt: 'NASA CO₂ visualization, source frame ' + frameNumber,
-      framing: 'svs-co2',
-    },
-  })),
-}, { steps: co2Frames.map(({ frameNumber }) => frameNumber) })
+  description: 'The frame values and sound describe colour features from NASA’s CO₂ visualization.',
+  attribution: 'NASA SVS · CO₂',
+  methodology: 'The sonification uses hot-colour pixel coverage as a feature of the rendered image.',
+  measurement: 'Hot-colour pixel share',
+  images: byFileName(co2Images),
+  alt: step => 'NASA CO₂ visualization, ' + co2Labels.format(step),
+  figures: f => [pixelShare(f.groupShares[4]), brightness(f.meanBrightness)],
+})

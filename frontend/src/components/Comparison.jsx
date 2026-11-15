@@ -1,15 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { ChevronsLeftRight, ImageOff, Pause, Play, Square } from 'lucide-react'
 import { formatValue } from '../services/earthData'
 import { ObservationImage } from './explorer/EarthFrame'
 import { useExclusiveSonification } from '../sonification/hooks/useExclusiveSonification'
-import { adaptNightLights } from '../sonification/adapters/nightLightsAdapter'
-import nightLightsFeatures from '../data/night-lights-features.json'
+import { getFeatureFrame } from '../sonification/adapters/mlFeatures'
 
-const telemetry = adaptNightLights(nightLightsFeatures)
-const telemetryByYear = new Map(telemetry.map(frame => [Number(frame.year), frame]))
-const CLIP_MS = 4000
-const GAP_MS = 300
+const CLIP_SECONDS = 4
 
 function ComparisonSlider({ left, right, labelA, labelB, period }) {
   const [divider, setDivider] = useState(50)
@@ -84,76 +80,43 @@ function ComparisonPlayer({ dataset, labels }) {
   const [stepB, setStepB] = useState(steps.at(-1))
   const [playback, setPlayback] = useState(null)
   const [message, setMessage] = useState('')
-  const timers = useRef([])
-  const runId = useRef(0)
   const audio = useExclusiveSonification()
   const left = dataset.getRecord(stepA)
   const right = dataset.getRecord(stepB)
-  const frameA = telemetryByYear.get(Number(stepA))
-  const frameB = telemetryByYear.get(Number(stepB))
+  const frameA = getFeatureFrame('night-lights', stepA)
+  const frameB = getFeatureFrame('night-lights', stepB)
   const bothSounds = Boolean(frameA && frameB)
   const a = left?.measurement
   const b = right?.measurement
   const comparable = a && b && a.name === b.name && a.unit === b.unit
   const aligned = Boolean(left?.image?.framing && left.image.framing === right?.image?.framing)
 
-  function clearTimers() {
-    timers.current.forEach(clearTimeout)
-    timers.current = []
-  }
   function stop() {
-    runId.current += 1
-    clearTimers()
     audio.stop()
     setPlayback(null)
+    setMessage('')
   }
-  // Clean up on unmount. The hook also disposes its Tone nodes.
-  useEffect(() => () => {
-    runId.current += 1
-    timers.current.forEach(clearTimeout)
-  }, [])
 
-  async function startSlot(slot, sequence = false) {
+  function startSlot(slot, sequence = false) {
     const frame = slot === 'A' ? frameA : frameB
     if (!frame) return
-    stop()
-    const id = runId.current
-    setMessage('Preparing audio…')
-    const started = await audio.start('changing', frame, 'night-lights')
-    if (id !== runId.current) return
-    if (!started) {
-      setMessage('Unable to start sonification. Check browser audio permissions and console.')
-      return
-    }
     setPlayback({ slot, sequence })
     setMessage(`Playing ${labels.label} ${slot} · ${labels.format(slot === 'A' ? stepA : stepB)}`)
-    timers.current.push(setTimeout(async () => {
-      if (id !== runId.current) return
-      audio.stop()
-      setPlayback(null)
-      if (!sequence || slot !== 'A') {
-        setMessage(sequence ? 'Comparison complete' : 'Playback complete')
-        return
-      }
-      setMessage('Switching to Year B…')
-      timers.current.push(setTimeout(async () => {
-        if (id !== runId.current) return
-        const secondStarted = await audio.start('changing', frameB, 'night-lights')
-        if (id !== runId.current) return
-        if (!secondStarted) {
-          setMessage('Unable to play Year B')
+    void audio.start('changing', frame, 'night-lights', {
+      duration: CLIP_SECONDS,
+      onInterrupt() {
+        setPlayback(null)
+        setMessage('')
+      },
+      onEnd() {
+        if (sequence && slot === 'A') {
+          startSlot('B', true)
           return
         }
-        setPlayback({ slot: 'B', sequence: true })
-        setMessage(`Playing ${labels.label} B · ${labels.format(stepB)}`)
-        timers.current.push(setTimeout(() => {
-          if (id !== runId.current) return
-          audio.stop()
-          setPlayback(null)
-          setMessage('Comparison complete')
-        }, CLIP_MS))
-      }, GAP_MS))
-    }, CLIP_MS))
+        setPlayback(null)
+        setMessage(sequence ? 'Comparison complete' : 'Playback complete')
+      },
+    })
   }
 
   function selectStep(slot, step) {
@@ -167,11 +130,12 @@ function ComparisonPlayer({ dataset, labels }) {
     else void startSlot(slot)
   }
   const change = comparable ? `${formatValue(b.value - a.value, true)} ${b.unit === '%' ? 'percentage points' : b.unit}` : 'Unavailable'
-  const status = audio.error || message || (bothSounds ? 'Ready to compare' : 'Sonification telemetry is missing for one or both years.')
+  const status = audio.error || (audio.status === 'loading' ? 'Preparing audio…' : message) ||
+    (bothSounds ? 'Ready to compare' : 'Sonification telemetry is missing for one or both years.')
 
   return steps.length ? <>
     {dataset.demo && <p className="compare-demo instrument-label">Mock comparison · Illustrative imagery and values</p>}
-    <p className="compare-demo instrument-label">Live sonification · Image-derived Night Lights features · {CLIP_MS / 1000}s per year</p>
+    <p className="compare-demo instrument-label">Live sonification · Image-derived Night Lights features · {CLIP_SECONDS}s per year</p>
     <div className="comparison-panels">
       {[['A', left, frameA], ['B', right, frameB]].map(([slot, record, frame]) =>
         <ObservationPanel key={slot} slot={slot} record={record} steps={steps} labels={labels}

@@ -1,5 +1,6 @@
 import { useRef } from 'react'
 import { AudioLines, Globe2, Pause, Play, SkipBack, SkipForward, Volume2, VolumeX } from 'lucide-react'
+import { PLAYBACK_SPEEDS } from '../../sonification/playback/schedule.js'
 
 const modes = [
   { id: 'global', label: 'Listen to Earth', Icon: AudioLines },
@@ -54,7 +55,7 @@ export function ObservationTimeline({ step, steps, labels, onSelect, getRecord }
         aria-current={step === item ? 'true' : undefined}
         aria-label={labels.format(item) + (hasData ? '' : ', data unavailable')}
         onClick={() => onSelect(item)}>
-        <span className="year-notch" /><span>{labels.format(item)}</span>
+        <span className="year-notch" /><span className="timeline-label">{labels.compact?.(item) ?? labels.format(item)}</span>
       </button>
     })}
   </div>
@@ -72,7 +73,7 @@ export function PlaybackControls({ timeline, labels, onToggle, muted, onMute, ha
     <span className="control-divider" aria-hidden="true" />
     <label className="sr-only" htmlFor="speed">Timeline playback speed</label>
     <select id="speed" value={speed} disabled={step === undefined} onChange={event => setSpeed(Number(event.target.value))}>
-      {[0.5, 1, 2].map(rate => <option key={rate} value={rate}>{rate}×</option>)}
+      {PLAYBACK_SPEEDS.map(rate => <option key={rate} value={rate}>{rate}×</option>)}
     </select>
     <button type="button" className="icon-button" aria-label={muted ? 'Unmute audio' : 'Mute audio'} disabled={!hasAudio} onClick={onMute}>{muted ? <VolumeX size={19} /> : <Volume2 size={19} />}</button>
   </div>
