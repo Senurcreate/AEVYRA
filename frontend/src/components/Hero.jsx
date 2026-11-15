@@ -4,6 +4,8 @@ import gsap from 'gsap'
 import { useReducedMotion } from '../hooks/useReducedMotion'
 import { project } from '../data/project'
 
+// Seconds the AEVYRA intro screen stays after the page is ready, before it fades out (it was 0.52). Change this to tune it.
+const INTRO_HOLD = 2.0
 const imageSizes = '(width < 768px) 240vw, max(145vw, 1440px)'
 const horizonPath = 'M 146 366 A 485 485 0 0 1 1054 366'
 const horizonParticles = Array.from({ length: 23 }, (_, index) => {
@@ -55,6 +57,9 @@ export default function Hero({ story, storyCount }) {
   const poster = useRef(null)
   const [intro, setIntro] = useState(() => !reduced && !introSeen() && !window.location.hash)
   const [ready, setReady] = useState(false)
+  // When the intro screen is shown, its fade-out already reveals the hero; replaying the entrance animation after it
+  // made everything vanish and fade in a second time (the visible "refresh").
+  const introRevealed = useRef(intro)
   const [imageFailed, setImageFailed] = useState(false)
   const [videoFailed, setVideoFailed] = useState(false)
   const artwork = story?.cover?.src
@@ -76,7 +81,7 @@ export default function Hero({ story, storyCount }) {
     if (reduced) return
     const context = gsap.context(() => {
       if (intro && ready) {
-        gsap.to('.intro-screen', { opacity: 0, duration: 0.45, delay: 0.52, onComplete: dismiss })
+        gsap.to('.intro-screen', { opacity: 0, duration: 0.45, delay: INTRO_HOLD, onComplete: dismiss })
       }
     }, root)
     return () => context.revert()
@@ -86,6 +91,10 @@ export default function Hero({ story, storyCount }) {
   // visible, and re-running it then made the text and globe jump back and fade in a second time.
   useLayoutEffect(() => {
     if (reduced || intro) return
+    if (introRevealed.current) {
+      introRevealed.current = false
+      return
+    }
     const context = gsap.context(() => {
       gsap.timeline({ defaults: { ease: 'power2.out' } })
         .from('.hero-earth', { opacity: 0, scale: 0.98, duration: 1.2 })
