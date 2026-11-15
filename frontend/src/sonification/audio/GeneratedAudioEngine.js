@@ -6,6 +6,8 @@ import { NoteVoices, TRANSITION_FADE } from './NoteVoices.js'
 // The aerosols dust texture can be switched off here (the score and mapping stay untouched).
 const DUST_ENABLED = true
 const BASS_CUT_HZ = 75
+// Phone and laptop speakers distort when driven hard, so every story plays about 3 dB quieter than its mix balance.
+const OUTPUT_TRIM = 0.7
 const LOOKAHEAD = 0.080
 const PICKUP = 0.082
 const mixes = {
@@ -187,7 +189,7 @@ export class GeneratedAudioEngine {
   }
 
   updateOutput() {
-    const gain = this.mode === 'reference' ? 0.10 : mixes[this.kind].gain
+    const gain = this.mode === 'reference' ? 0.10 : mixes[this.kind].gain * OUTPUT_TRIM
     const active = this.startedAt != null && !this.muted && (this.mode === 'reference' || this.controls)
     const now = this.context.currentTime
     this.output.gain.rampTo(active ? gain : 0, TRANSITION_FADE, active ? Math.max(now, this.startedAt) : now)
