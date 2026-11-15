@@ -1,45 +1,38 @@
-
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as Tone from 'tone';
 import { AevyraAudioEngine } from '../audio/AudioEngine';
+import { AerosolsAudioEngine } from '../audio/AerosolsAudioEngine';
+import { createCo2AudioEngine } from '../audio/Co2AudioEngine';
+import { mapAerosolFrame } from '../mappings/aerosolsProfile';
 
 export function useExclusiveSonification() {
   const owner = useRef(null);
   const generation = useRef(0);
-
+  const mutedRef = useRef(false);
   const [playing, setPlaying] = useState(false);
-  const [muted, setMuted] = useState(false);
+  const [muted, setMutedState] = useState(false);
   const [error, setError] = useState('');
   const [analyser, setAnalyser] = useState(null);
 
-  const getOwner = useCallback(() => {
-    if (!owner.current) {
-      owner.current = {
-        engine: new AevyraAudioEngine(),
-        reference: null,
-        referenceGain: null,
-        referenceAnalyser: null,
-        mode: null,
-      };
-    }
-    return owner.current;
+  const setMuted = useCallback(value => {
+    const next = Boolean(value);
+    mutedRef.current = next;
+    setMutedState(next);
+    owner.current?.engine?.setMuted?.(next);
+    owner.current?.referenceGain?.gain.rampTo(next ? 0 : 0.10, 0.04);
   }, []);
 
   const silence = useCallback(() => {
-    const o = owner.current;
-    if (!o) return;
-
-    o.engine.stop();
-
-    o.reference?.stop();
-    o.reference?.dispose();
-    o.referenceGain?.dispose();
-    o.referenceAnalyser?.dispose();
-
-    o.reference = null;
-    o.referenceGain = null;
-    o.referenceAnalyser = null;
-    o.mode = null;
+    const previous = owner.current;
+    owner.current = null;
+    if (!previous) return;
+    try { previous.engine?.stop?.(); } finally {
+      previous.engine?.dispose?.();
+      previous.reference?.stop?.();
+      previous.reference?.dispose?.();
+      previous.referenceGain?.dispose?.();
+      previous.referenceAnalyser?.dispose?.();
+    }
   }, []);
 
   const stop = useCallback(() => {
@@ -49,57 +42,48 @@ export function useExclusiveSonification() {
     setAnalyser(null);
   }, [silence]);
 
-  const start = useCallback(async (mode, frame) => {
-    if (!frame) return false;
-
+  const start = useCallback(async (mode, frame, kind = 'night-lights', groups) => {
+    if (!frame || !['night-lights', 'aerosols', 'co2'].includes(kind)) return false;
     const token = ++generation.current;
     setError('');
-
+    // Start from the user gesture; Tone.start unlocks browser audio.
     try {
       await Tone.start();
       if (token !== generation.current) return false;
-
-      const o = getOwner();
       silence();
-
+      const current = { kind, mode, engine: null, reference: null, referenceGain: null, referenceAnalyser: null };
+      owner.current = current;
       if (mode === 'reference') {
-        o.referenceAnalyser = new Tone.Analyser(
-          'waveform',
-          1024
-        );
-
-        o.referenceGain = new Tone.Gain(
-          muted ? 0 : 0.10
-        ).toDestination();
-
-        o.referenceGain.connect(o.referenceAnalyser);
-
-        o.reference = new Tone.Oscillator({
-          frequency: 'D3',
-          type: 'sine',
-        }).connect(o.referenceGain);
-
-        o.reference.start();
-        o.mode = 'reference';
-
-        setAnalyser(o.referenceAnalyser);
-      } else {
-        o.engine.applyFrameTelemetry(frame);
-
-        await o.engine.init();
-
-        if (token !== generation.current) {
-          o.engine.stop();
-          return false;
+        current.referenceAnalyser = new Tone.Analyser('waveform', 1024);
+        current.referenceGain = new Tone.Gain(mutedRef.current ? 0 : 0.10).toDestination();
+        current.referenceGain.connect(current.referenceAnalyser);
+        current.reference = new Tone.Oscillator({ frequency: 'D3', type: 'sine' }).connect(current.referenceGain);
+        current.reference.start();
+        setAnalyser(current.referenceAnalyser);
+      } else if (mode === 'changing') {
+        if (kind === 'night-lights') {
+          current.engine = new AevyraAudioEngine();
+          current.engine.applyFrameTelemetry(frame);
+          await current.engine.init();
+          if (token !== generation.current) return false;
+          current.engine.setMuted(mutedRef.current);
+          current.engine.start();
+        } else if (kind === 'aerosols') {
+          current.engine = new AerosolsAudioEngine();
+          current.engine.apply(mapAerosolFrame(frame));
+          await current.engine.init();
+          if (token !== generation.current) return false;
+          current.engine.setMuted(mutedRef.current);
+          current.engine.start();
+        } else {
+          current.engine = createCo2AudioEngine(Tone);
+          current.engine.setMuted(mutedRef.current);
+          await current.engine.start(frame, groups);
+          if (token !== generation.current) return false;
         }
-
-        o.engine.setMuted(muted);
-        o.engine.start();
-        o.mode = 'changing';
-
-        setAnalyser(o.engine.waveformAnalyser);
-      }
-
+        setAnalyser(current.engine.waveformAnalyser ?? null);
+      } else throw new Error('Unknown sound track');
+      if (token !== generation.current) return false;
       setPlaying(true);
       return true;
     } catch (err) {
@@ -107,61 +91,26 @@ export function useExclusiveSonification() {
         silence();
         setPlaying(false);
         setAnalyser(null);
-        setError(
-          err instanceof Error
-            ? err.message
-            : 'Unable to start audio'
-        );
+        setError(err instanceof Error ? err.message : 'Unable to start audio');
       }
       return false;
     }
-  }, [getOwner, muted, silence]);
-
-  const applyFrame = useCallback((frame) => {
-    const o = owner.current;
-
-    if (frame && o?.mode === 'changing') {
-      try {
-        o.engine.applyFrameTelemetry(frame);
-      } catch (err) {
-        setError(
-          err instanceof Error
-            ? err.message
-            : 'Invalid telemetry'
-        );
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    const o = owner.current;
-    if (!o) return;
-
-    o.engine.setMuted(muted);
-
-    o.referenceGain?.gain.rampTo(
-      muted ? 0 : 0.10,
-      0.04
-    );
-  }, [muted]);
-
-  useEffect(() => {
-    return () => {
-      generation.current += 1;
-      silence();
-      owner.current?.engine.dispose();
-      owner.current = null;
-    };
   }, [silence]);
 
-  return {
-    start,
-    stop,
-    applyFrame,
-    playing,
-    muted,
-    setMuted,
-    error,
-    analyser,
-  };
+  const applyFrame = useCallback((frame, kind, groups) => {
+    const current = owner.current;
+    if (!frame || !current || current.kind !== kind || current.mode !== 'changing') return;
+    try {
+      if (kind === 'night-lights') current.engine.applyFrameTelemetry(frame);
+      else if (kind === 'aerosols') current.engine.apply(mapAerosolFrame(frame));
+      else if (kind === 'co2') current.engine.updateFrame(frame, groups);
+    } catch (err) { setError(err instanceof Error ? err.message : 'Invalid frame'); }
+  }, []);
+
+  useEffect(() => () => {
+    generation.current += 1;
+    silence();
+  }, [silence]);
+
+  return { start, stop, applyFrame, playing, muted, setMuted, error, analyser };
 }
