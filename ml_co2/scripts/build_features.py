@@ -27,7 +27,8 @@ from datetime import datetime, timedelta
 import numpy as np
 from PIL import Image
 from sklearn.cluster import KMeans
-from common import FRAMES, OUT, DIAG, load_rgb8
+from common import FRAMES, OUT, DIAG, ROOT, load_rgb8
+import regions as RG
 from download import picked_indices, raw_path, FIRST_ALLOWED, LAST, SEED as PICK_SEED
 
 K = 10
@@ -73,6 +74,46 @@ def group_of(rgb):
     return 2                          # brownLight: brighter tan/brown (land and/or haze)
 
 
+RG_LIMB = 960.0                      # assumed true limb radius in px (see fit_camera.py)
+CAM_FILE = ROOT / "scripts" / "camera.json"
+RNAMES = RG.NAMES
+NR = len(RNAMES)
+R_LO = np.array([min(b[0] for b in RG.REGIONS[n]["boxes"]) for n in RNAMES] + [0.0])
+R_HI = np.array([max(b[1] for b in RG.REGIONS[n]["boxes"]) for n in RNAMES] + [1.0])
+# 0.25-degree grid of the whole Earth, used only to measure how much of each region faces the camera
+_glat = 90.0 - 0.25 * (np.arange(720) + 0.5)
+_glon = -180.0 + 0.25 * (np.arange(1440) + 0.5)
+GLON, GLAT = np.meshgrid(_glon, _glat)
+G_REGION = RG.region_of(GLON, GLAT)
+G_W = np.cos(np.radians(GLAT))
+
+
+def pixel_lonlat(xs, ys, cam):
+    """Orthographic inverse projection: disc pixel -> (lon, lat) in degrees, using the estimated camera."""
+    u0 = (xs - CX) / RG_LIMB
+    v0 = (CY - ys) / RG_LIMB
+    c, sn = np.cos(np.radians(cam["roll"])), np.sin(np.radians(cam["roll"]))
+    u = c * u0 + sn * v0
+    v = -sn * u0 + c * v0
+    z = np.sqrt(np.clip(1 - u * u - v * v, 0, 1))
+    p0 = np.radians(cam["lat"])
+    lat = np.degrees(np.arcsin(np.clip(z * np.sin(p0) + v * np.cos(p0), -1, 1)))
+    lon = cam["lon"] + np.degrees(np.arctan2(u, z * np.cos(p0) - v * np.sin(p0)))
+    return (lon + 180.0) % 360.0 - 180.0, lat
+
+
+def visible_fraction(cam):
+    """Share of each region's area (cos-latitude weighted) on the hemisphere facing the camera."""
+    zc = (np.sin(np.radians(GLAT)) * np.sin(np.radians(cam["lat"])) +
+          np.cos(np.radians(GLAT)) * np.cos(np.radians(cam["lat"])) * np.cos(np.radians(GLON - cam["lon"])))
+    vis = zc > 0
+    out = []
+    for i in range(NR):
+        m = G_REGION == i
+        out.append(float(G_W[m & vis].sum() / G_W[m].sum()))
+    return out
+
+
 def disc_pixels(img):
     H, W = img.shape[:2]
     yy, xx = np.ogrid[:H, :W]
@@ -107,7 +148,8 @@ def main():
         print("  cluster %d RGB%s -> %s" % (k, np.rint(centers[k]).astype(int).tolist(), GROUPS[cluster_group[k]]))
 
     # ---- pass 2: classify every disc pixel of every frame
-    frames, prev_share, previews = [], None, {}
+    CAMS = json.loads(CAM_FILE.read_text(encoding="utf-8"))["frames"]
+    frames, prev_share, prev_rshare, previews = [], None, None, {}
     for o, n in enumerate(idx):
         img = load_rgb8(raw_path(n))
         H, W = img.shape[:2]
@@ -128,6 +170,47 @@ def main():
         cy = [r6(yn[g == k].mean()) if (g == k).any() else None for k in range(G)]
         over = g != 0
         mean_b = float((pix[over].astype(np.float32) @ LUMA).mean() / 255.0) if over.any() else 0.0
+        # ---- per-region numbers (same pixels, same groups; only the bookkeeping is split by region)
+        cam = CAMS[str(n)]
+        lon, lat = pixel_lonlat(xs, ys, cam)
+        rr = RG.region_of(lon, lat).astype(np.int64)
+        rr[rr == RG.NONE] = NR
+        rg = rr * G + g
+        reg_clu = np.bincount(rr * K + lab, minlength=(NR + 1) * K).reshape(NR + 1, K)
+        reg_g = np.bincount(rg, minlength=(NR + 1) * G).reshape(NR + 1, G)
+        npx_r = reg_g.sum(axis=1)
+        lumv = pix.astype(np.float32) @ LUMA
+        reg_lum = np.bincount(rr[over], weights=lumv[over].astype(np.float64), minlength=NR + 1)
+        reg_over = np.bincount(rr[over], minlength=NR + 1)
+        sn = np.bincount(rg, weights=np.sin(np.radians(lon)), minlength=(NR + 1) * G).reshape(NR + 1, G)
+        cs = np.bincount(rg, weights=np.cos(np.radians(lon)), minlength=(NR + 1) * G).reshape(NR + 1, G)
+        sl = np.bincount(rg, weights=lat, minlength=(NR + 1) * G).reshape(NR + 1, G)
+        sb = np.clip(((lon - R_LO[rr]) / (R_HI[rr] - R_LO[rr]) * STRIPS).astype(np.int64), 0, STRIPS - 1)
+        reg_strip = np.bincount((rr * STRIPS + sb) * G + g, minlength=(NR + 1) * STRIPS * G).reshape(NR + 1, STRIPS, G)
+        vis = visible_fraction(cam)
+        regions, rshare = {}, {}
+        for ri, name in enumerate(RNAMES):
+            npr = int(npx_r[ri])
+            entry = {"visibleFraction": r6(vis[ri]), "reliable": bool(vis[ri] >= 0.5), "pixelCount": npr}
+            if npr == 0:
+                entry.update({"clusterShares": None, "groupShares": None, "meanBrightness": None, "groupCentroidLon": None,
+                              "groupCentroidLat": None, "groupShareDeltaVsPrev": None, "strips": None})
+                rshare[name] = None
+            else:
+                gs = reg_g[ri] / npr
+                rshare[name] = gs
+                gc = reg_g[ri]
+                entry.update({
+                    "clusterShares": [r6(v) for v in reg_clu[ri] / npr],
+                    "groupShares": [r6(v) for v in gs],
+                    "meanBrightness": r6(reg_lum[ri] / reg_over[ri] / 255.0 / 1.0) if reg_over[ri] else 0.0,
+                    "groupCentroidLon": [r6(np.degrees(np.arctan2(sn[ri, k], cs[ri, k]))) if gc[k] else None for k in range(G)],
+                    "groupCentroidLat": [r6(sl[ri, k] / gc[k]) if gc[k] else None for k in range(G)],
+                    "groupShareDeltaVsPrev": None if (prev_rshare is None or prev_rshare[name] is None)
+                    else [r6(a - b) for a, b in zip(gs, prev_rshare[name])],
+                    "strips": [[r6(v) for v in row / row.sum()] if row.sum() else None for row in reg_strip[ri]],
+                })
+            regions[name] = entry
         frames.append({
             "frameId": f"co2-{n:05d}",
             "frameNumber": n,
@@ -142,9 +225,13 @@ def main():
             "groupCentroidY": cy,
             "groupShareDeltaVsPrev": None if prev_share is None else [r6(a - b) for a, b in zip(gshare, prev_share)],
             "strips": strips,
+            "camera": {"centerLon": cam["lon"], "centerLat": cam["lat"], "rollDeg": cam["roll"], "fitScore": cam["score"],
+                       "refitted": cam["refitted"]},
+            "regions": regions,
             "verified": False,
         })
         prev_share = gshare
+        prev_rshare = rshare
         if o in (0, len(idx) - 1) or n == 513:
             m = np.zeros((H, W, 3), np.uint8)
             m[ys, xs] = GROUP_COLORS[g]
@@ -168,6 +255,14 @@ def main():
             "timeRule": "hourly: frame n is 2020-01-19T13:00 + (n - 112) hours; checked against the date stamp printed on all 12 frames; time zone not stated",
             "note": "random frames, not evenly spaced in time; `order` is time order",
         },
+        "regionMethod": ("The globe rotates, so the camera centre (lon/lat) of every frame was ESTIMATED by matching an orthographic "
+                         "projection of a flat world map to the frame (scripts/fit_camera.py, error about a few degrees; coastlines checked "
+                         "on all 12 frames). Each disc pixel is converted to lon/lat and given a region from lon/lat boxes (scripts/regions.py, "
+                         "first matching region wins, boxes include nearby sea). Region numbers describe only the VISIBLE part of the region: "
+                         "`visibleFraction` = share of the region's area facing the camera, `reliable` = visibleFraction >= 0.5. "
+                         "Pixels near the globe edge are squashed and count the same as centre pixels. Strips run west to east in longitude "
+                         "across the region's box (48 strips); a strip with no visible pixels is null."),
+        "regions": [{"id": n, "label": RG.REGIONS[n]["label"], "boxesLonLat": [list(b) for b in RG.REGIONS[n]["boxes"]]} for n in RNAMES],
         "groups": GROUPS,
         "clusterCentroidRGB": [np.rint(c).astype(int).tolist() for c in centers],
         "clusterGroup": [GROUPS[x] for x in cluster_group],

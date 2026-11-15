@@ -23,6 +23,7 @@ import numpy as np
 from PIL import Image
 from sklearn.cluster import KMeans
 from common import FRAMES, OUT, DIAG, load_rgb8
+import regions as RG
 from download import picked_indices, raw_path, FIRST_ALLOWED, LAST, SEED as PICK_SEED
 
 K = 10
@@ -92,6 +93,17 @@ def main():
             edges = np.linspace(0, W, STRIPS + 1).round().astype(int)
             xs = (np.arange(W, dtype=np.float64) + 0.5) / W
             rows_per_block = max(1, BLOCK_PIXELS // W)
+            rmap = RG.region_map(H, W)
+            rinfo = RG.region_info(rmap)
+            R = len(RG.NAMES)
+            col_idx = np.arange(W, dtype=np.int64)
+        reg_clu = np.zeros((R + 1, K), np.int64)
+        reg_g = np.zeros((R + 1, G), np.int64)
+        reg_col = np.zeros((R + 1, W, G), np.int64)
+        reg_row = np.zeros((R + 1, H, G), np.int64)
+        reg_lum = np.zeros(R + 1, np.float64)
+        reg_aer = np.zeros(R + 1, np.int64)
+        reg_chg = np.zeros(R + 1, np.int64)
         Image.fromarray(img).resize((DISPLAY_W, round(H * DISPLAY_W / W)), Image.LANCZOS).save(
             FRAMES / f"aer-{i:04d}.webp", "WEBP", quality=WEBP_QUALITY, method=6)   # display only
 
@@ -115,6 +127,20 @@ def main():
             aer = g.ravel() != 0
             aer_lum_sum += float((flat[aer] @ LUMA).sum(dtype=np.float64))
             aer_n += int(aer.sum())
+            # ---- per-region counts (same pixels, same groups; only the bookkeeping is split by region)
+            rb = rmap[r:r + bh]
+            ridx = np.where(rb == RG.NONE, R, rb).astype(np.int64)
+            rf, gf, lf = ridx.ravel(), g.ravel().astype(np.int64), lab.astype(np.int64)
+            reg_clu += np.bincount(rf * K + lf, minlength=(R + 1) * K).reshape(R + 1, K)
+            reg_g += np.bincount(rf * G + gf, minlength=(R + 1) * G).reshape(R + 1, G)
+            reg_col += np.bincount(((ridx * W + col_idx[None, :]) * G + g).ravel(), minlength=(R + 1) * W * G).reshape(R + 1, W, G)
+            reg_row += np.bincount(((ridx * H + (r + np.arange(bh, dtype=np.int64))[:, None]) * G + g).ravel(),
+                                   minlength=(R + 1) * H * G).reshape(R + 1, H, G)
+            lum_f = flat @ LUMA
+            reg_lum += np.bincount(rf[aer], weights=lum_f[aer].astype(np.float64), minlength=R + 1)
+            reg_aer += np.bincount(rf[aer], minlength=R + 1)
+            if prev is not None:
+                reg_chg += np.bincount(rf[(prev[r:r + bh] != g).ravel()], minlength=R + 1)
             if prev is not None:
                 change += int((prev[r:r + bh] != g).sum())
         npx = H * W
@@ -128,6 +154,31 @@ def main():
         cx = [r6((col_group[:, k] * xs).sum() / gcount[k]) if gcount[k] else None for k in range(G)]
         cy = [r6((row_group[:, k] * ys).sum() / gcount[k]) if gcount[k] else None for k in range(G)]
         prev_share = frames[-1]["_gshare"] if frames else None
+        prev_rshare = frames[-1]["_rshare"] if frames else None
+        regions, rshare = {}, {}
+        for ri, name in enumerate(RG.NAMES):
+            info = rinfo[ri]
+            npr = info["pixelCount"]
+            bx = info["pixelBox"]
+            gs = reg_g[ri] / npr
+            rshare[name] = gs
+            redges = np.linspace(bx["x0"], bx["x1"], STRIPS + 1).round().astype(int)
+            rstrips = []
+            for si in range(STRIPS):
+                c = reg_col[ri, redges[si]:redges[si + 1]].sum(axis=0)
+                rstrips.append([r6(v) for v in c / c.sum()] if c.sum() else None)
+            gc = reg_g[ri]
+            regions[name] = {
+                "clusterShares": [r6(v) for v in reg_clu[ri] / npr],
+                "groupShares": [r6(v) for v in gs],
+                "aerosolShare": r6(reg_aer[ri] / npr),
+                "meanBrightness": r6(reg_lum[ri] / reg_aer[ri] / 255.0) if reg_aer[ri] else 0.0,
+                "groupCentroidLon": [r6(-180.0 + 360.0 * (reg_col[ri, :, k] * xs).sum() / gc[k]) if gc[k] else None for k in range(G)],
+                "groupCentroidLat": [r6(90.0 - 180.0 * (reg_row[ri, :, k] * ys).sum() / gc[k]) if gc[k] else None for k in range(G)],
+                "changeVsPrev": None if prev is None else r6(reg_chg[ri] / npr),
+                "groupShareDeltaVsPrev": None if prev_rshare is None else [r6(a - b) for a, b in zip(gs, prev_rshare[name])],
+                "strips": rstrips,
+            }
         frames.append({
             "frameId": f"aer-{i:04d}",
             "frameIndex": i,
@@ -143,8 +194,10 @@ def main():
             "changeVsPrev": None if prev is None else r6(change / npx),
             "groupShareDeltaVsPrev": None if prev_share is None else [r6(a - b) for a, b in zip(gshare, prev_share)],
             "strips": strips,
+            "regions": regions,
             "verified": False,
             "_gshare": gshare,
+            "_rshare": rshare,
         })
         if n in (0, len(idx) - 1) or i == 1443:
             small = Image.fromarray(gmap).resize((1620, 810), Image.NEAREST)
@@ -154,6 +207,7 @@ def main():
         del img
     for f in frames:
         del f["_gshare"]
+        del f["_rshare"]
 
     doc = {
         "storyId": "aerosols",
@@ -171,6 +225,9 @@ def main():
             "pickSeed": PICK_SEED,
             "note": "random frames, NOT evenly spaced in time; `order` is time order",
         },
+        "regionMethod": "lon/lat boxes on the equirectangular map (see regions.py); every pixel belongs to the first matching region; "
+                        "same K-means groups as the whole map, numbers are shares of the REGION's own pixels; strips run west to east across the region's pixel box",
+        "regions": rinfo,
         "groups": GROUPS,
         "clusterCentroidRGB": [np.rint(c).astype(int).tolist() for c in centers],
         "clusterGroup": [GROUPS[g] for g in cluster_group],

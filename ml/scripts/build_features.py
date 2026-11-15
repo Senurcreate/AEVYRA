@@ -21,6 +21,7 @@ import numpy as np
 from PIL import Image
 from sklearn.cluster import KMeans
 from common import (YEARS, raw_path, load_rgb8, load_crop, FRAMES, OUT, DIAG)
+import regions as RG
 
 DISPLAY_W = 1600               # WebP display images only
 K = 4                          # tier 0 (no light) + 3 light tiers
@@ -91,6 +92,10 @@ def main():
     edges = np.linspace(0, W, STRIPS + 1).round().astype(int)
     xs = (np.arange(W, dtype=np.float64) + 0.5) / W
     rows_per_block = max(1, BLOCK_PIXELS // W)
+    rmap = RG.region_map(H, W)
+    rinfo = RG.region_info(rmap)
+    R = len(RG.NAMES)
+    col_idx = np.arange(W, dtype=np.int64)
     frames, prev, tier_preview = [], None, {}
     for y in YEARS:
         img = load_masked_crop(y, cfg)
@@ -104,6 +109,14 @@ def main():
         col_lum = np.zeros(W, np.float64)                  # brightness of LIGHT pixels only, per column
         lit_lum_sum, base_count = 0.0, 0
         change = grew = faded = 0
+        reg_t = np.zeros((R + 1, K), np.int64)
+        reg_col = np.zeros((R + 1, W, K), np.int64)
+        reg_collum = np.zeros((R + 1, W), np.float64)
+        reg_litlum = np.zeros(R + 1, np.float64)
+        reg_base = np.zeros(R + 1, np.int64)
+        reg_chg = np.zeros(R + 1, np.int64)
+        reg_grew = np.zeros(R + 1, np.int64)
+        reg_fad = np.zeros(R + 1, np.int64)
         for r in range(0, H, rows_per_block):
             blk = img[r:r + rows_per_block]
             bh = blk.shape[0]
@@ -121,6 +134,21 @@ def main():
             col_lum += np.where(lit, lum, 0.0).sum(axis=0, dtype=np.float64)
             lit_lum_sum += float(lum[lit].sum(dtype=np.float64))
             base_count += int((lum > BASELINE_THRESHOLD).sum())
+            # ---- per-region counts (same pixels, same tiers; only the bookkeeping is split by region)
+            rb = rmap[r:r + bh]
+            ridx = np.where(rb == RG.NONE, R, rb).astype(np.int64)
+            rf = ridx.ravel()
+            reg_t += np.bincount(rf * K + t.ravel(), minlength=(R + 1) * K).reshape(R + 1, K)
+            reg_col += np.bincount(((ridx * W + col_idx[None, :]) * K + t).ravel(), minlength=(R + 1) * W * K).reshape(R + 1, W, K)
+            reg_collum += np.bincount((ridx * W + col_idx[None, :]).ravel(), weights=np.where(lit, lum, 0.0).ravel().astype(np.float64),
+                                      minlength=(R + 1) * W).reshape(R + 1, W)
+            reg_litlum += np.bincount(rf[lit.ravel()], weights=lum[lit].astype(np.float64), minlength=R + 1)
+            reg_base += np.bincount(rf[(lum > BASELINE_THRESHOLD).ravel()], minlength=R + 1)
+            if prev is not None:
+                pp = prev[r:r + bh]
+                reg_chg += np.bincount(rf[(pp != t).ravel()], minlength=R + 1)
+                reg_grew += np.bincount(rf[(t > pp).ravel()], minlength=R + 1)
+                reg_fad += np.bincount(rf[(t < pp).ravel()], minlength=R + 1)
             if prev is not None:
                 p = prev[r:r + bh]
                 change += int((p != t).sum())
@@ -132,6 +160,29 @@ def main():
         for s in range(STRIPS):
             c = col_tier[edges[s]:edges[s + 1]].sum(axis=0)
             strips.append([r6(v) for v in c / c.sum()])
+        regions = {}
+        for ri, name in enumerate(RG.NAMES):
+            info = rinfo[ri]
+            npr = info["pixelCount"]
+            bx = info["pixelBox"]
+            redges = np.linspace(bx["x0"], bx["x1"], STRIPS + 1).round().astype(int)
+            rstrips = []
+            for si in range(STRIPS):
+                c = reg_col[ri, redges[si]:redges[si + 1]].sum(axis=0)
+                rstrips.append([r6(v) for v in c / c.sum()] if c.sum() else None)
+            rlit = int(reg_t[ri, 1:].sum())
+            cl = reg_collum[ri]
+            regions[name] = {
+                "tierShares": [r6(v) for v in reg_t[ri] / npr],
+                "litShare": r6(rlit / npr),
+                "meanBrightness": r6(reg_litlum[ri] / rlit / 255.0) if rlit else 0.0,
+                "centroidLon": r6(-180.0 + 360.0 * (cl * xs).sum() / cl.sum()) if cl.sum() > 0 else None,
+                "changeVsPrev": None if prev is None else r6(reg_chg[ri] / npr),
+                "grewShare": None if prev is None else r6(reg_grew[ri] / npr),
+                "fadedShare": None if prev is None else r6(reg_fad[ri] / npr),
+                "strips": rstrips,
+                "baselineLitShare": r6(reg_base[ri] / npr),
+            }
         frames.append({
             "frameId": f"nl-{y}",
             "year": y,
@@ -146,6 +197,7 @@ def main():
             "fadedShare": None if prev is None else r6(faded / n),
             "strips": strips,
             "baselineLitShare": r6(base_count / n),
+            "regions": regions,
             "verified": False,
         })
         if y in (YEARS[0], YEARS[-1]):
@@ -165,6 +217,9 @@ def main():
         "cropBox": cfg["cropBox"],
         "analysisResolution": f"{W}x{H}",
         "lightThreshold": LIGHT_THRESHOLD,
+        "regionMethod": "lon/lat boxes on the equirectangular map (see regions.py); every pixel belongs to the first matching region; "
+                        "same tiers as the whole map, numbers are shares of the REGION's own pixels; strips run west to east across the region's pixel box",
+        "regions": rinfo,
         "tierFeature": "log(1 + brightness 0-255)",
         "tierCentroidBrightness": [None] + [round(float(v), 1) for v in centroid_luma],
         "frames": frames,
