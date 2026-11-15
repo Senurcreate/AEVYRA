@@ -3,6 +3,8 @@ import { beatSeconds, eventsAtBeat, midiToHz } from '../mappings/referenceProfil
 import { createDustBuffer, DustGrains, GRAIN_RELEASE } from './DustGrains.js'
 import { NoteVoices, TRANSITION_FADE } from './NoteVoices.js'
 
+// The aerosols dust texture can be switched off here (the score and mapping stay untouched).
+const DUST_ENABLED = true
 const LOOKAHEAD = 0.080
 const PICKUP = 0.082
 const mixes = {
@@ -90,12 +92,13 @@ export class GeneratedAudioEngine {
       const movement = kind === 'aerosols' ? this.own(new Tone.Chorus({
         frequency: 0.21, delayTime: 6.8, depth: 0.30, spread: 180, feedback: 0, wet: 0.38,
       })).connect(this.level).start() : null
-      const dustBuffer = kind === 'aerosols' ? createDustBuffer(this.context) : null
+      const dustBuffer = kind === 'aerosols' && DUST_ENABLED ? createDustBuffer(this.context) : null
       const mix = mixes[kind]
       const room = this.own(new Tone.Convolver({ url: makeImpulse(this.context, mix.decay), normalize: false }))
       const reflections = this.own(new Tone.Gain(mix.reverb))
       this.level.chain(room, reflections, this.output)
       for (const [name, patch] of Object.entries(patches[kind])) {
+        if (patch.grains && !DUST_ENABLED) continue
         const filter = this.own(new Tone.Filter({ frequency: 1200, type: 'lowpass', Q: 0.55 }))
         const pan = this.own(new Tone.Panner(0))
         const gain = this.own(new Tone.Gain(1))
@@ -228,7 +231,9 @@ export class GeneratedAudioEngine {
   }
 
   play(event, time, seconds = event.seconds) {
-    const { voices } = this.layers[event.voice]
+    const layer = this.layers[event.voice]
+    if (!layer) return // layer switched off (see DUST_ENABLED)
+    const { voices } = layer
     const hold = seconds / this.speed
     if (event.grainSeed !== undefined) {
       voices.play(event.grainSeed, time, hold, event.velocity)
