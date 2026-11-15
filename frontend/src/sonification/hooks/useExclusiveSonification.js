@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { start as unlockAudio } from 'tone'
 import { GeneratedAudioEngine } from '../audio/GeneratedAudioEngine.js'
+import { configureAudioContext } from '../audio/audioContext.js'
 import { hapticPlayer } from '../haptics/HapticPlayer.js'
 import { mapReferenceFrame } from '../mappings/referenceProfiles.js'
 
@@ -59,6 +60,7 @@ export function useExclusiveSonification() {
     }
 
     try {
+      configureAudioContext()
       await unlockAudio()
       if (session.current !== entry) return false
       entry.engine = new GeneratedAudioEngine(kind, mode, {

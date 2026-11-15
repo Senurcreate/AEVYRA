@@ -5,6 +5,7 @@ import { NoteVoices, TRANSITION_FADE } from './NoteVoices.js'
 
 // The aerosols dust texture can be switched off here (the score and mapping stay untouched).
 const DUST_ENABLED = true
+const BASS_CUT_HZ = 75
 const LOOKAHEAD = 0.080
 const PICKUP = 0.082
 const mixes = {
@@ -81,7 +82,10 @@ export class GeneratedAudioEngine {
       this.output = this.own(new Tone.Gain(0))
       this.limiter = this.own(new Tone.Limiter(-3)).toDestination()
       this.analyser = this.own(new Tone.Analyser('waveform', 1024))
-      this.output.connect(this.limiter)
+      // Laptop and phone speakers cannot play deep bass; it only rattles and distorts them. Cut what no
+      // small speaker can reproduce (below about 75 Hz, gently) so it cannot eat headroom or buzz.
+      this.bassCut = this.own(new Tone.Filter({ frequency: BASS_CUT_HZ, type: 'highpass', rolloff: -12, Q: 0.5 }))
+      this.output.chain(this.bassCut, this.limiter)
       this.limiter.connect(this.analyser)
 
       if (mode === 'reference') {
