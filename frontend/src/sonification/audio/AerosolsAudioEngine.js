@@ -22,6 +22,8 @@ export class AerosolsAudioEngine {
     await Tone.start(); // Must be invoked from a user Play gesture.
     if (this.ready) return;
     this.master = new Tone.Gain(0.65).toDestination();
+    this.analyser = new Tone.Analyser('waveform', 1024);
+    this.master.connect(this.analyser);
     this.limiter = new Tone.Limiter(-4).connect(this.master);
     this.filter = new Tone.Filter(500, 'lowpass').connect(this.limiter);
     this.pad = new Tone.PolySynth(Tone.Synth, {
@@ -106,11 +108,13 @@ export class AerosolsAudioEngine {
     if (this.ready) this.master.gain.rampTo(this.muted ? 0 : 0.65, 0.04);
   }
 
+  get waveformAnalyser() { return this.analyser ?? null; }
+
   dispose() {
     if (!this.ready) return;
     this.stop();
     [this.loop, this.pad, this.pulse, this.shimmer, this.filter,
-      this.panner, this.limiter, this.master].forEach(node => node.dispose());
+      this.panner, this.limiter, this.master, this.analyser].forEach(node => node.dispose());
     this.ready = false;
   }
 }
