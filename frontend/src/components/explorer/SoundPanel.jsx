@@ -84,6 +84,7 @@ export default function SoundPanel({
   track,
   onTrack,
   available = true,
+  unavailableText,
   reduced,
   onStop,
 }) {
@@ -122,7 +123,7 @@ export default function SoundPanel({
 
       {!available && (
         <p className="sound-status">
-          ML features are unavailable for this frame and region.
+          {unavailableText ?? 'ML features are unavailable for this frame and region.'}
         </p>
       )}
 

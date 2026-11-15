@@ -7,6 +7,7 @@ import SoundPanel from './SoundPanel'
 import { useTimeline } from '../../hooks/useTimeline'
 import { useReducedMotion } from '../../hooks/useReducedMotion'
 import { getFeatureFrame } from '../../sonification/adapters/mlFeatures'
+import { getRegionView } from '../../data/regionView'
 import { mapReferenceFrame, SCORE_SECONDS } from '../../sonification/mappings/referenceProfiles'
 import { useExclusiveSonification } from '../../sonification/hooks/useExclusiveSonification'
 
@@ -61,6 +62,13 @@ function SymphonyPlayer({ dataset, story }) {
   const globalRecord = dataset.getRecord(timeline.step)
   const frame = getFeatureFrame(kind, timeline.step, region)
   const frameKey = region + '-' + timeline.step
+  // Regional views are a zoomed window of the global image; a CO₂ region facing away from the camera has none.
+  const regionInfo = mode === 'regional' && kind ? getRegionView(kind, timeline.step, region) : null
+  const regionView = regionInfo?.status === 'ok' ? regionInfo.view : undefined
+  const hiddenNote = regionInfo?.status === 'hidden'
+    ? name + ' faces away from the camera in this frame (' + Math.round(100 * regionInfo.visibleFraction) + '% visible), so it has no regional values.'
+    : undefined
+  const regionNote = hiddenNote ?? (regionView?.approximate ? 'The globe rotates, so this window and its region edges are approximate.' : undefined)
   const stepLabel = hasFrames ? labels.format(timeline.step) : ''
   const mappings = useMemo(() => new Map(dataset.steps.map(step => [
     step, mapReferenceFrame(kind, getFeatureFrame(kind, step, region)),
@@ -158,7 +166,8 @@ function SymphonyPlayer({ dataset, story }) {
         <RegionSelector regions={dataset.regions} selected={selected} onSelect={setSelected} />
         <EarthFrame key={frameKey} image={record?.image ?? globalRecord?.image} step={timeline.step}
           stepLabel={stepLabel} scannerRef={timeline.scannerRef} regionId={region}
-          demo={dataset.demo} caption="Global image · regional analysis" />
+          demo={dataset.demo} view={regionView} note={regionNote}
+          caption={regionView ? name + ' · zoomed from the global image' : 'Global image · regional analysis'} />
       </div>}
     </div>
 
@@ -173,7 +182,7 @@ function SymphonyPlayer({ dataset, story }) {
           muted={audio.muted} hasAudio={Boolean(kind)} onMute={() => audio.setMuted(!audio.muted)} />
         <p>{dataset.description || dataset.title}</p>
       </div>
-      {kind && <SoundPanel audio={audio} track={track} onTrack={selectTrack} available={Boolean(frame)} reduced={reduced} onStop={stopAudio} />}
+      {kind && <SoundPanel audio={audio} track={track} onTrack={selectTrack} available={Boolean(frame)} unavailableText={hiddenNote} reduced={reduced} onStop={stopAudio} />}
     </div>
     {hasFrames && <p className="sr-only" role="status" aria-atomic="true">{timeline.playing ? '' : name + ', ' + stepLabel}</p>}
   </div>

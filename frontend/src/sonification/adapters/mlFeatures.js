@@ -26,8 +26,9 @@ export function readFeatureDataset(kind, definition = definitions[kind]) {
   const byStep = new Map()
   const regions = data.regions.map(({ id, label, boxesLonLat }) => {
     const [west, east, south, north] = boxesLonLat[0]
-    return { id, name: label, lng: (west + east) / 2, lat: (south + north) / 2 }
+    return { id, name: label, lng: (west + east) / 2, lat: (south + north) / 2, boxes: boxesLonLat }
   })
+  const [width, height] = String(data.analysisResolution ?? '').split('x').map(Number)
   function featured(raw, regionId, frame) {
     if (!raw || (kind === 'co2' && regionId !== 'global' && raw.reliable !== true)) return null
     const usable = groups
@@ -43,7 +44,7 @@ export function readFeatureDataset(kind, definition = definitions[kind]) {
     for (const { id: regionId } of regions) views.set(regionId, featured(frame.regions?.[regionId], regionId, frame))
     byStep.set(id, views)
   }
-  return { frames, regions, groups: data.groups, sourceUrl: data.sourceUrl, step, get: (id, regionId) => byStep.get(id)?.get(regionId) ?? null }
+  return { frames, regions, groups: data.groups, sourceUrl: data.sourceUrl, step, resolution: [width, height], globeDisc: data.globeDisc ?? null, get: (id, regionId) => byStep.get(id)?.get(regionId) ?? null }
 }
 
 export const featureDatasets = Object.fromEntries(Object.keys(definitions).map(kind => [kind, readFeatureDataset(kind)]))

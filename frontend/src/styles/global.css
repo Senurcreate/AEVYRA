@@ -195,6 +195,12 @@ h1,h2,h3,p,figure,dl,dd { margin: 0; }
 .globe-marker span { visibility: hidden; background: #080a0c; border: 1px solid var(--line); padding: 5px 8px; position: absolute; top: calc(100% - 3px); color: var(--text); font: .75rem var(--mono); white-space: nowrap; pointer-events: none; }
 .globe-marker:hover span, .globe-marker:focus-visible span, .globe-marker[aria-pressed='true'] span { visibility: visible; }
 .regional-frame { display: grid; grid-template-columns: minmax(0,1fr) minmax(138px, 33%); align-items: stretch; border-top: 1px solid var(--line); min-width: 0; }
+/* A region is shown as a zoomed window of the global image, so it gets a wide row of its own instead of the small thumbnail. */
+.regional-frame:has(.is-region) { grid-template-columns: minmax(0,1fr); }
+.regional-frame .is-region .frame-media { height: auto; aspect-ratio: var(--region-aspect, 16 / 9); width: min(100%, calc(300px * var(--region-aspect, 1.78))); margin-inline: auto; }
+.is-region .frame-media img { animation: none; }
+.region-outline { position: absolute; z-index: 1; border: 1px solid #a8e4ffb0; box-shadow: 0 0 0 1px #0007; pointer-events: none; }
+.frame-note { margin: 0; padding: 8px 20px 12px; border-top: 1px solid var(--line-soft); color: #b5bec4; font: .75rem var(--mono); }
 .region-selector { padding: 16px 20px; display: grid; align-content: center; gap: 6px; }
 .region-selector select { width: 100%; }
 .regional-frame .frame-media { height: 86px; }
