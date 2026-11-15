@@ -96,6 +96,7 @@ export default function Hero({ story, storyCount }) {
     <div className="hero-frame shell" inert={intro}>
       <div className="hero-context"><span className="signal-dot" /> NASA Space Apps Challenge <span className="hero-context-divider" /> {story?.title ?? 'Earth Jukebox'}</div>
       <h1 id="hero-title" className="hero-wordmark">{story?.headline ?? 'AEVYRA'}</h1>
+      <div className="hero-glow" aria-hidden="true" />
       <div className={'hero-earth' + (artwork ? ' hero-story-art' : '')} aria-hidden="true">
         <div className="hero-earth-parallax">
           <div className="hero-earth-drift">

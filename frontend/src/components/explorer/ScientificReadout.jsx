@@ -23,7 +23,7 @@ function ColorLegend({ legend, source }) {
   </div>
 }
 
-export default function ScientificReadout({ story, record, name, stepLabel }) {
+export default function ScientificReadout({ story, record, name, stepLabel, description }) {
   return <div className="readout angular-glass glass-inset">
     <div className="readout-head">
       <h3 className="instrument-label"><i className="signal-dot" /> {story.title}</h3>
@@ -42,14 +42,17 @@ export default function ScientificReadout({ story, record, name, stepLabel }) {
         </div>
       })}
     </dl>
-    <div className="readout-explanation">
-      <h4>What Are We Seeing?</h4>
-      <p>{story.seeing}</p>
+    <p className="readout-description">{description}</p>
+    <div className="readout-details">
+      <div className="readout-explanation">
+        <h4>What Are We Seeing?</h4>
+        <p>{story.seeing}</p>
+      </div>
+      <div className="readout-explanation">
+        <h4>Why Does It Matter?</h4>
+        <p>{story.matters}</p>
+      </div>
+      <ColorLegend legend={story.legend} source={story.source} />
     </div>
-    <div className="readout-explanation">
-      <h4>Why Does It Matter?</h4>
-      <p>{story.matters}</p>
-    </div>
-    <ColorLegend legend={story.legend} source={story.source} />
   </div>
 }

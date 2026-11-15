@@ -10,7 +10,7 @@ const storyLinks = [
 ]
 
 export function Brand({ landing }) {
-  return <a className="brand" href={landing ? '#top' : '/'} aria-label="AEVYRA home"><img src="/aevyra.svg" alt="" width="31" height="31" /><span>AEVYRA</span></a>
+  return <a className="brand" href={landing ? '#top' : '/'} aria-label="AEVYRA home"><img src="/aevyra.svg" alt="" width="28" height="28" /><span>AEVYRA</span></a>
 }
 
 export function Navbar({ story }) {
@@ -32,6 +32,7 @@ export function Navbar({ story }) {
         {storyLinks.map(([item, label]) =>
           <a key={item.path} href={item.path} aria-current={story === item ? 'page' : undefined} onClick={() => setOpen(false)}>{label}</a>,
         )}
+        <a className="mobile-source" href={project.challengeUrl}>Space Apps Challenge <ArrowUpRight size={13} aria-hidden="true" /></a>
       </nav>
       <a className="nav-source" href={project.challengeUrl}>Space Apps Challenge <ArrowUpRight size={13} aria-hidden="true" /></a>
     </div>
