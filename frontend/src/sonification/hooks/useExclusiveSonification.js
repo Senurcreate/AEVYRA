@@ -25,13 +25,6 @@ export function useExclusiveSonification() {
     session.current?.engine?.setMuted(mutedRef.current)
   }, [])
 
-  const applyFrame = useCallback((frame, kind) => {
-    const entry = session.current
-    if (!entry || entry.controlsAt || entry.kind !== kind || entry.mode !== 'changing' || entry.frame === frame) return
-    entry.frame = frame
-    entry.engine?.apply(mapReferenceFrame(kind, frame))
-  }, [])
-
   const start = useCallback(async (mode, frame, kind, options = {}) => {
     stop()
     activeSession?.cancel('interrupted')
@@ -39,7 +32,7 @@ export function useExclusiveSonification() {
     setStatus('loading')
 
     const entry = {
-      mode, kind, frame, speed: options.speed, controlsAt: options.controlsAt,
+      speed: options.speed,
       cancel(reason) {
         if (session.current !== entry) return
         const position = entry.engine?.elapsed()
@@ -76,7 +69,7 @@ export function useExclusiveSonification() {
         },
         onError: fail,
       })
-      if (mode === 'changing') entry.engine.apply(mapReferenceFrame(kind, entry.frame))
+      if (mode === 'changing') entry.engine.apply(mapReferenceFrame(kind, frame))
       entry.engine.setMuted(mutedRef.current)
       entry.engine.resume()
       setAnalyser(entry.engine.analyser)
@@ -112,7 +105,7 @@ export function useExclusiveSonification() {
   useEffect(() => () => session.current?.cancel('unmount'), [])
 
   return {
-    start, stop, pause, resume, elapsed, applyFrame, seek, setSpeed, status,
+    start, stop, pause, resume, elapsed, seek, setSpeed, status,
     playing: status === 'playing', muted, setMuted, error, analyser,
   }
 }

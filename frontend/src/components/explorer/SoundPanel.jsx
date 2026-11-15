@@ -74,19 +74,11 @@ function Waveform({ analyser, active, reduced }) {
 }
 
 
-const sounds = [
-  ['reference', 'Reference Tone'],
-  ['changing', 'Earth’s Changing Tone'],
-];
-
 export default function SoundPanel({
   audio,
-  track,
-  onTrack,
-  available = true,
-  unavailableText,
+  available,
+  availabilityExplained,
   reduced,
-  onStop,
 }) {
   const haptics = useHaptics();
   const active =
@@ -96,45 +88,21 @@ export default function SoundPanel({
     !audio.error;
 
   return (
-    <div className="sound-panel angular-glass glass-inset">
-      <div
-        className="sound-switch"
-        role="group"
-        aria-label="Choose a sound to listen to"
-      >
-        {sounds.map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            aria-pressed={track === id}
-            disabled={id === 'changing' && !available}
-            onClick={() => onTrack(id)}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
+    <div className="sound-panel">
       <Waveform
         analyser={audio.analyser}
         active={active}
         reduced={reduced}
       />
 
-      {!available && (
+      {!available && !availabilityExplained && (
         <p className="sound-status">
-          {unavailableText ?? 'ML features are unavailable for this frame and region.'}
+          ML features are unavailable for this frame and region.
         </p>
       )}
 
-      {audio.status !== 'idle' && (
-        <button
-          className="quiet-button"
-          type="button"
-          onClick={onStop}
-        >
-          Stop sound
-        </button>
+      {audio.status === 'loading' && (
+        <p className="sound-status" role="status">Preparing audio…</p>
       )}
 
       {haptics.supported && (

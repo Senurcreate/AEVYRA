@@ -1,5 +1,5 @@
 import { useRef } from 'react'
-import { AudioLines, Globe2, Pause, Play, SkipBack, SkipForward, Volume2, VolumeX } from 'lucide-react'
+import { AudioLines, Globe2, Pause, Play, SkipBack, SkipForward, Square, Volume2, VolumeX } from 'lucide-react'
 import { PLAYBACK_SPEEDS } from '../../sonification/playback/schedule.js'
 
 const modes = [
@@ -48,33 +48,45 @@ export function RegionSelector({ regions, selected, onSelect }) {
 
 export function ObservationTimeline({ step, steps, labels, onSelect, getRecord }) {
   return <div className="timeline" role="group" aria-label={'Select a ' + labels.label.toLowerCase()}
-    style={{ '--timeline-wide': Math.min(steps.length, 12), '--timeline-narrow': Math.min(steps.length, 6) }}>
+    style={{ '--timeline-wide': Math.min(steps.length, 12), '--timeline-medium': Math.min(steps.length, 6), '--timeline-narrow': Math.min(steps.length, 4), '--timeline-small': Math.min(steps.length, 3) }}>
     {steps.map(item => {
       const hasData = Boolean(getRecord(item))
       return <button type="button" key={item} className={'timeline-year' + (hasData ? '' : ' no-data')}
         aria-current={step === item ? 'true' : undefined}
         aria-label={labels.format(item) + (hasData ? '' : ', data unavailable')}
         onClick={() => onSelect(item)}>
-        <span className="year-notch" /><span className="timeline-label">{labels.compact?.(item) ?? labels.format(item)}</span>
+        <span className="year-notch" aria-hidden="true" /><span className="timeline-label">{labels.compact?.(item) ?? labels.format(item)}</span>
       </button>
     })}
   </div>
 }
 
-export function PlaybackControls({ timeline, labels, onToggle, muted, onMute, hasAudio }) {
+export function PlaybackControls({ timeline, labels, status, onToggle, onStop, muted, onMute, hasAudio }) {
   const { step, select, playing, previous, next, speed, setSpeed } = timeline
+  const playButton = useRef(null)
+  const loading = status === 'loading'
+  const Icon = loading ? Square : playing ? Pause : Play
   const label = labels.label.toLowerCase()
-  return <div className="playback-controls">
-    <button type="button" className="play-button" aria-label={playing ? 'Pause timeline' : 'Play timeline'} disabled={step === undefined} onClick={onToggle}>
-      {playing ? <Pause size={17} fill="currentColor" /> : <Play size={17} fill="currentColor" />}
-    </button>
-    <button type="button" className="icon-button" aria-label={'Previous ' + label} disabled={previous === undefined} onClick={() => select(previous)}><SkipBack size={17} /></button>
-    <button type="button" className="icon-button" aria-label={'Next ' + label} disabled={next === undefined} onClick={() => select(next)}><SkipForward size={17} /></button>
-    <span className="control-divider" aria-hidden="true" />
-    <label className="sr-only" htmlFor="speed">Timeline playback speed</label>
-    <select id="speed" value={speed} disabled={step === undefined} onChange={event => setSpeed(Number(event.target.value))}>
-      {PLAYBACK_SPEEDS.map(rate => <option key={rate} value={rate}>{rate}×</option>)}
-    </select>
-    <button type="button" className="icon-button" aria-label={muted ? 'Unmute audio' : 'Mute audio'} disabled={!hasAudio} onClick={onMute}>{muted ? <VolumeX size={19} /> : <Volume2 size={19} />}</button>
+  return <div className="playback-controls" role="group" aria-label="Sonification playback">
+    <div className="playback-group">
+      <button ref={playButton} type="button" className="primary-button timeline-play" disabled={step === undefined || !hasAudio} onClick={onToggle}>
+        <Icon size={16} fill="currentColor" aria-hidden="true" /> {loading ? 'Cancel' : playing ? 'Pause' : 'Play'}
+      </button>
+      <button type="button" className="icon-button control-chip" aria-label={'Previous ' + label} disabled={previous === undefined} onClick={() => select(previous)}><SkipBack size={17} aria-hidden="true" /></button>
+      <button type="button" className="icon-button control-chip" aria-label={'Next ' + label} disabled={next === undefined} onClick={() => select(next)}><SkipForward size={17} aria-hidden="true" /></button>
+    </div>
+    <div className="playback-group">
+      <label className="sr-only" htmlFor="speed">Timeline playback speed</label>
+      <select id="speed" value={speed} disabled={step === undefined} onChange={event => setSpeed(Number(event.target.value))}>
+        {PLAYBACK_SPEEDS.map(rate => <option key={rate} value={rate}>{rate}×</option>)}
+      </select>
+      <button type="button" className="icon-button control-chip" aria-label={muted ? 'Unmute audio' : 'Mute audio'} disabled={!hasAudio} onClick={onMute}>
+        {muted ? <VolumeX size={19} aria-hidden="true" /> : <Volume2 size={19} aria-hidden="true" />}
+      </button>
+    </div>
+    {status !== 'idle' && !loading && <button type="button" className="icon-button control-chip" aria-label="Stop sound" onClick={() => {
+      onStop()
+      playButton.current?.focus()
+    }}><Square size={14} fill="currentColor" aria-hidden="true" /></button>}
   </div>
 }

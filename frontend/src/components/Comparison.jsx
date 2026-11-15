@@ -44,18 +44,18 @@ function ObservationPanel({ slot, record, steps, labels, playing, available, onS
     aria-labelledby={'comparison-year-' + slot}>
     <header className="comparison-panel-header">
       <h3 id={'comparison-year-' + slot}>{labels.format(step)}</h3>
-      <ObservationPicker id={labels.label.toLowerCase() + '-' + slot.toLowerCase()} label={label} step={step} steps={steps} format={labels.format} onSelect={onSelect} />
+      <div className="comparison-panel-controls">
+        <ObservationPicker id={labels.label.toLowerCase() + '-' + slot.toLowerCase()} label={label} step={step} steps={steps} format={labels.format} onSelect={onSelect} />
+        <button className="play-button" type="button" disabled={!available}
+          aria-label={(playing ? 'Stop ' : 'Play ') + label + ', ' + labels.format(step)} onClick={onToggle}>
+          {playing ? <Pause size={17} fill="currentColor" aria-hidden="true" /> : <Play size={17} fill="currentColor" aria-hidden="true" />}
+        </button>
+      </div>
     </header>
     <figure className="comparison-frame"><ObservationImage key={step} image={record.image} /></figure>
     <div className="comparison-panel-info">
-      <div>
-        <p className="comparison-measurement">{measurement ? <>{measurement.name} <strong>{formatValue(measurement.value)} {measurement.unit}</strong></> : 'Measurement unavailable'}</p>
-        {description && <p>{description}</p>}
-      </div>
-      <button className="play-button" type="button" disabled={!available}
-        aria-label={(playing ? 'Stop ' : 'Play ') + label + ', ' + labels.format(step)} onClick={onToggle}>
-        {playing ? <Pause size={17} fill="currentColor" aria-hidden="true" /> : <Play size={17} fill="currentColor" aria-hidden="true" />}
-      </button>
+      <p className="comparison-measurement">{measurement ? <>{measurement.name} <strong>{formatValue(measurement.value)} {measurement.unit}</strong></> : 'Measurement unavailable'}</p>
+      {description && <p>{description}</p>}
       {!available && <p className="comparison-audio-missing">Sonification telemetry unavailable for this {labels.label.toLowerCase()}.</p>}
     </div>
   </article>
