@@ -50,7 +50,6 @@ export class DustGrains {
     const entry = { filters: [] }
     entry.source = new Tone.ToneBufferSource({
       context: this.context, url: this.buffer, fadeIn: Math.min(GRAIN_FADE_IN, 0.6 * length), fadeOut: GRAIN_FADE_OUT,
-      onended: () => this.free(entry),
     })
     for (const note of [first, second]) {
       const filter = new Tone.Filter({ context: this.context, type: 'bandpass', frequency: BREATH_HZ[note], Q: BREATH_Q })
@@ -61,10 +60,16 @@ export class DustGrains {
     this.grains.add(entry)
     const offset = (seed / 4294967296) * (this.buffer.duration - length - GRAIN_FADE_OUT)
     entry.source.start(time, offset, length, BREATH_GAIN * velocity)
+    // Clean up only after the grain has completely faded out. Offline rendering keeps the graph
+    // until it has rendered everything (its timers run ahead of the audio), as NoteVoices does.
+    if (this.context.isOffline) return
+    const wait = Math.max(0, time - this.context.currentTime) + length + GRAIN_FADE_OUT + 0.1
+    entry.timer = this.context.setTimeout(() => this.free(entry), wait)
   }
 
   free(entry) {
     if (!this.grains.delete(entry)) return
+    if (entry.timer !== undefined) this.context.clearTimeout(entry.timer)
     entry.source.dispose()
     for (const filter of entry.filters) filter.dispose()
   }
