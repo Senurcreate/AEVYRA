@@ -77,15 +77,23 @@ export default function Hero({ story, storyCount }) {
     const context = gsap.context(() => {
       if (intro && ready) {
         gsap.to('.intro-screen', { opacity: 0, duration: 0.45, delay: 0.52, onComplete: dismiss })
-      } else if (!intro) {
-        gsap.timeline({ defaults: { ease: 'power2.out' } })
-          .from('.hero-earth', { opacity: 0, scale: 0.98, duration: 1.2 })
-          .from('.hero-wordmark', { opacity: 0, y: 13, duration: 0.95 }, 0.04)
-          .from('.hero-message', { opacity: 0, y: 14, duration: 0.85 }, 0.2)
       }
     }, root)
     return () => context.revert()
   }, [intro, ready, reduced])
+
+  // The entrance animation must not depend on `ready`: the video reports ready after the page is already
+  // visible, and re-running it then made the text and globe jump back and fade in a second time.
+  useLayoutEffect(() => {
+    if (reduced || intro) return
+    const context = gsap.context(() => {
+      gsap.timeline({ defaults: { ease: 'power2.out' } })
+        .from('.hero-earth', { opacity: 0, scale: 0.98, duration: 1.2 })
+        .from('.hero-wordmark', { opacity: 0, y: 13, duration: 0.95 }, 0.04)
+        .from('.hero-message', { opacity: 0, y: 14, duration: 0.85 }, 0.2)
+    }, root)
+    return () => context.revert()
+  }, [intro, reduced])
 
   return <section id="top" className={'hero' + (story ? ' story-hero' : '')} aria-labelledby="hero-title" ref={root}>
     {intro && <div className="intro-screen">
@@ -107,7 +115,7 @@ export default function Hero({ story, storyCount }) {
     loop
     playsInline
     preload="metadata"
-    poster={project.heroImage}
+    poster={project.heroPoster ?? project.heroImage}
     onLoadedData={() => setReady(true)}
     onError={() => setVideoFailed(true)}
     className="hero-video"

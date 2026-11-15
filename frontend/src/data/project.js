@@ -5,6 +5,7 @@ export const project = {
   team: 'AEVYRA team',
   //heroVideo: '',
   heroVideo: '/videos/earth-hero.mp4',
+  heroPoster: '/media/earth-hero-poster.webp', // first frame of the hero video, shown until the video is ready
   heroImage: '/media/earth-night.webp',
   heroImageSmall: '/media/earth-night-small.webp',
 }
