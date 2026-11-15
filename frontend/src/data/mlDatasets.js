@@ -1,9 +1,11 @@
 import nightLightsFeatures from '../../../ml/output/features.json'
 import aerosolFeatures from '../../../ml_aerosols/output/features.json'
+import co2Features from './co2.features.json'
 import { demoData } from './demoData'
 import { parseDataset } from '../services/earthData'
 
 const nightLightsImages = import.meta.glob('../../../ml/output/frames/*.webp', { eager: true, query: '?url&no-inline', import: 'default' })
+const co2Images = import.meta.glob('../../../ml_co2/output/frames/*.webp', { eager: true, query: '?url&no-inline', import: 'default' })
 const aerosolImages = import.meta.glob('../../../ml_aerosols/output/frames/*.webp', { eager: true, query: '?url&no-inline', import: 'default' })
 
 const isShare = value => Number.isFinite(value) && value >= 0 && value <= 1
@@ -85,3 +87,26 @@ export const aerosolDataset = parseDataset({
     },
   })),
 }, { steps: aerosolFrames.map(({ frameIndex }) => frameIndex) })
+
+
+const co2Frames = [...co2Features.frames].sort((a, b) => a.order - b.order)
+export const co2Dataset = parseDataset({
+  title: 'CO₂',
+  description: 'Image-colour features from NASA CO₂ visualization; these are not measured ppm values.',
+  source: { label: 'NASA SVS · CO₂', url: co2Features.sourceUrl },
+  methodology: 'Rendered globe colours are grouped into visual categories; hot-colour share is an artistic proxy, not a CO₂ measurement.',
+  regions: [],
+  records: co2Frames.map(({ frameNumber, image, groupShares, meanBrightness }) => ({
+    frameNumber,
+    regionId: 'global',
+    name: 'Hot-colour pixel share',
+    value: pixelShare(groupShares[co2Features.groups.indexOf('hot')])?.value,
+    unit: '%',
+    figures: [pixelShare(groupShares[co2Features.groups.indexOf('hot')]), isShare(meanBrightness) ? { value: meanBrightness, unit: 'Normalized image brightness (0–1)' } : null],
+    image: {
+      src: co2Images['../../../ml_co2/output/frames/' + image],
+      alt: 'NASA CO₂ visualization, source frame ' + frameNumber,
+      framing: 'svs-co2',
+    },
+  })),
+}, { steps: co2Frames.map(({ frameNumber }) => frameNumber) })

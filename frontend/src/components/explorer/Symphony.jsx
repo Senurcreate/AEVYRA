@@ -1,4 +1,3 @@
-
 import {
   Component,
   lazy,
@@ -26,6 +25,8 @@ import { useReducedMotion } from '../../hooks/useReducedMotion';
 import { useExclusiveSonification } from '../../sonification/hooks/useExclusiveSonification';
 import { adaptNightLights } from '../../sonification/adapters/nightLightsAdapter';
 import nightLightsFeatures from '../../data/night-lights-features.json';
+import { aerosolFrames } from '../../sonification/adapters/aerosolsAdapter';
+import co2Features from '../../data/co2.features.json';
 
 const EarthGlobe = lazy(() => import('./EarthGlobe'));
 
@@ -146,6 +147,26 @@ function isNightLightsStory(story, dataset) {
   return titleMatches && timelineMatches;
 }
 
+// Match the selected Explorer card to its source feature frames.
+const aerosolByStep = new Map(aerosolFrames.map(f => [Number(f.frameIndex), f]));
+const co2ByStep = new Map(co2Features.frames.map(f => [Number(f.frameNumber), f]));
+function datasetKind(story, dataset) {
+  if (story?.path === '/night-lights') return 'night-lights';
+  if (story?.path === '/geos-aerosols') return 'aerosols';
+  if (story?.path === '/dyamond-carbon-dioxide') return 'co2';
+  const identity = [story?.id, story?.slug, story?.title, dataset?.id, dataset?.title].filter(Boolean).join(' ').toLowerCase();
+  if (identity.includes('aerosol')) return 'aerosols';
+  if (identity.includes('co2') || identity.includes('co₂') || identity.includes('carbon dioxide')) return 'co2';
+  if (isNightLightsStory(story, dataset)) return 'night-lights';
+  return null;
+}
+function findSoundFrame(kind, step, steps) {
+  if (kind === 'night-lights') return resolveFrame(step, steps);
+  if (kind === 'aerosols') return aerosolByStep.get(Number(step)) ?? null;
+  if (kind === 'co2') return co2ByStep.get(Number(step)) ?? null;
+  return null;
+}
+
 // -------------------------------------------------------
 // Globe error boundary
 // -------------------------------------------------------
@@ -205,7 +226,7 @@ export default function Symphony({
 
       {dataset ? (
         <SymphonyPlayer
-          key={story?.id ?? dataset?.id ?? 'earth'}
+          key={story?.path ?? dataset?.id ?? 'earth'}
           dataset={dataset}
           story={story}
         />
@@ -287,26 +308,9 @@ function SymphonyPlayer({ dataset, story }) {
     region
   );
 
-  // -----------------------------------------------------
-  // Select Night Lights telemetry
-  // -----------------------------------------------------
-
-  const isNightLights = isNightLightsStory(
-    story,
-    dataset
-  );
-
-  const frame = isNightLights
-    ? resolveFrame(
-        timeline.step,
-        dataset.steps
-      )
-    : null;
-
-  const available =
-    isNightLights &&
-    mode === 'global' &&
-    Boolean(frame);
+  const kind = datasetKind(story, dataset);
+  const frame = findSoundFrame(kind, timeline.step, dataset.steps);
+  const available = Boolean(kind && frame && mode === 'global');
 
   const frameKey = `${region}-${timeline.step}`;
 
@@ -319,30 +323,9 @@ function SymphonyPlayer({ dataset, story }) {
       ? `${labels.label} ${stepLabel}`
       : stepLabel;
 
-  // -----------------------------------------------------
-  // Apply telemetry whenever the year changes
-  // -----------------------------------------------------
-
   useEffect(() => {
-    if (!available || !frame) {
-      return;
-    }
-
-    audio.applyFrame(frame);
-
-    console.log(
-      '[AEVYRA] Night Lights frame applied:',
-      {
-        year: frame.year,
-        frameIndex: frame.frameIndex,
-        metrics: frame.metrics,
-      }
-    );
-  }, [
-    available,
-    frame,
-    audio.applyFrame,
-  ]);
+    if (available && frame) audio.applyFrame(frame, kind, co2Features.groups);
+  }, [available, frame, kind, audio.applyFrame]);
 
   // Stop sound if the selected view has no sonification.
   useEffect(() => {
@@ -382,7 +365,7 @@ function SymphonyPlayer({ dataset, story }) {
         storyId: story?.id,
         datasetId: dataset?.id,
         currentStep: timeline.step,
-        isNightLights,
+        kind,
         frameFound: Boolean(frame),
         frameYear: frame?.year,
         available,
@@ -392,7 +375,7 @@ function SymphonyPlayer({ dataset, story }) {
     story?.id,
     dataset?.id,
     timeline.step,
-    isNightLights,
+    kind,
     frame,
     available,
   ]);
@@ -437,7 +420,7 @@ function SymphonyPlayer({ dataset, story }) {
         '[AEVYRA] Cannot start playback:',
         {
           storyId: story?.id,
-          isNightLights,
+          kind,
           mode,
           step: timeline.step,
           frameFound: Boolean(frame),
@@ -464,10 +447,7 @@ function SymphonyPlayer({ dataset, story }) {
         ? steps[0]
         : timeline.step;
 
-    const startFrame = resolveFrame(
-      startStep,
-      steps
-    );
+    const startFrame = findSoundFrame(kind, startStep, steps);
 
     if (!startFrame) {
       console.error(
@@ -482,15 +462,11 @@ function SymphonyPlayer({ dataset, story }) {
         '[AEVYRA] Starting sonification:',
         {
           track,
-          year: startFrame.year,
-          metrics: startFrame.metrics,
+          frameId: startFrame.frameId ?? startFrame.year,
         }
       );
 
-      const started = await audio.start(
-        track,
-        startFrame
-      );
+      const started = await audio.start(track, startFrame, kind, co2Features.groups);
 
       if (!started) {
         console.error(
@@ -530,10 +506,7 @@ function SymphonyPlayer({ dataset, story }) {
           timeline.toggle();
         }
       } else {
-        await audio.start(
-          nextTrack,
-          frame
-        );
+        await audio.start(nextTrack, frame, kind, co2Features.groups);
       }
 
       return;
@@ -545,10 +518,7 @@ function SymphonyPlayer({ dataset, story }) {
     // Selecting a tone can preview it immediately.
     // The timeline is not started automatically.
     try {
-      await audio.start(
-        nextTrack,
-        frame
-      );
+      await audio.start(nextTrack, frame, kind, co2Features.groups);
     } catch (err) {
       console.error(
         '[AEVYRA] Track selection error:',
@@ -743,7 +713,7 @@ function SymphonyPlayer({ dataset, story }) {
 
         {/* Keep panel visible for Night Lights
             even when telemetry is unavailable. */}
-        {isNightLights && (
+        {Boolean(kind) && (
           <SoundPanel
             audio={audio}
             track={track}

@@ -1,4 +1,4 @@
-import raw from '../data/aerosols.features.json';
+import raw from '../../data/aerosols.features.json';
 
 export const AEROSOL_GROUPS = ['background', 'sulfate', 'smoke', 'seaSalt', 'dust'];
 
