@@ -61,8 +61,9 @@ function makeImpulse(context, seconds) {
 }
 
 export class GeneratedAudioEngine {
-  constructor(kind, mode, { duration = Infinity, offset = 0, speed = 1, controlsAt, onEnd, onError } = {}) {
+  constructor(kind, mode, { duration = Infinity, offset = 0, speed = 1, controlsAt, onEnd, onError, haptics } = {}) {
     this.context = Tone.getContext()
+    this.haptics = this.context.isOffline ? undefined : haptics // optional phone vibration that follows the notes
     this.kind = kind
     this.mode = mode
     this.duration = duration
@@ -161,6 +162,7 @@ export class GeneratedAudioEngine {
 
   setMuted(muted) {
     this.muted = muted
+    this.haptics?.setMuted(muted)
     this.updateOutput()
   }
 
@@ -224,17 +226,20 @@ export class GeneratedAudioEngine {
     this.updateOutput()
     this.cancelTick()
     this.release()
+    this.haptics?.cancel()
   }
 
   release(now = this.context.currentTime) {
     for (const { voices } of Object.values(this.layers)) voices.cut(now)
   }
 
-  play(event, time, seconds = event.seconds) {
+  // `feel` is false when held notes are only being restored after a pause or seek: they sound again, but are not new hits.
+  play(event, time, seconds = event.seconds, feel = true) {
     const layer = this.layers[event.voice]
     if (!layer) return // layer switched off (see DUST_ENABLED)
     const { voices } = layer
     const hold = seconds / this.speed
+    if (feel) this.haptics?.note(this.kind, event, time)
     if (event.grainSeed !== undefined) {
       voices.play(event.grainSeed, time, hold, event.velocity)
       return
@@ -251,7 +256,7 @@ export class GeneratedAudioEngine {
       for (const event of eventsAtBeat(this.kind, this.controlsFor(at) ?? this.controls, i)) {
         const remaining = at + event.seconds - position
         if (event.hold && remaining > 0.15 && !restored.has(event.voice)) {
-          this.play(event, time, remaining)
+          this.play(event, time, remaining, false)
           restored.add(event.voice)
         }
       }
@@ -278,6 +283,8 @@ export class GeneratedAudioEngine {
       const time = Math.max(now, this.startedAt + (at - this.position) / this.speed)
       for (const event of eventsAtBeat(this.kind, this.controlsFor(at), beat)) this.play(event, time)
     }
+    // The audio output delay is subtracted so the buzz meets the sound instead of leading it.
+    this.haptics?.flush(now, this.context.rawContext?.outputLatency ?? this.context.rawContext?.baseLatency ?? 0)
   }
 
   stop() {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { start as unlockAudio } from 'tone'
 import { GeneratedAudioEngine } from '../audio/GeneratedAudioEngine.js'
+import { hapticPlayer } from '../haptics/HapticPlayer.js'
 import { mapReferenceFrame } from '../mappings/referenceProfiles.js'
 
 // The explorer and comparison have independent controls and share one audio owner.
@@ -65,6 +66,7 @@ export function useExclusiveSonification() {
         offset: options.offset,
         speed: entry.speed,
         controlsAt: options.controlsAt,
+        haptics: hapticPlayer,
         onEnd() {
           entry.cancel()
           options.onEnd?.()

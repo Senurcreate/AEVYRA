@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { useHaptics } from '../../sonification/hooks/useHaptics'
 
 
 function Waveform({ analyser, active, reduced }) {
@@ -86,6 +87,7 @@ export default function SoundPanel({
   reduced,
   onStop,
 }) {
+  const haptics = useHaptics();
   const active =
     audio.playing &&
     !audio.muted &&
@@ -132,6 +134,24 @@ export default function SoundPanel({
         >
           Stop sound
         </button>
+      )}
+
+      {haptics.supported && (
+        <>
+          <button
+            className="quiet-button"
+            type="button"
+            aria-pressed={haptics.enabled}
+            onClick={() => haptics.setEnabled(!haptics.enabled)}
+          >
+            Vibration: {haptics.enabled ? 'On' : 'Off'}
+          </button>
+          {haptics.enabled && (
+            <p className="sound-status">
+              The phone vibrates with the notes. If you feel nothing, turn off Do Not Disturb.
+            </p>
+          )}
+        </>
       )}
 
       {audio.error && (
