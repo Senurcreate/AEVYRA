@@ -1,0 +1,90 @@
+{
+  "note": "estimated camera per frame, see fit_camera.py; lon/lat = point at the centre of the globe disc (degrees), roll = image rotation (degrees)",
+  "trendDegPerFrame": -0.19932617009370204,
+  "frames": {
+    "112": {
+      "lon": 114.847,
+      "lat": 3.226,
+      "roll": -4.641,
+      "score": 0.639,
+      "refitted": false
+    },
+    "115": {
+      "lon": 115.521,
+      "lat": 2.709,
+      "roll": -3.918,
+      "score": 0.634,
+      "refitted": false
+    },
+    "122": {
+      "lon": 116.056,
+      "lat": 2.435,
+      "roll": -2.627,
+      "score": 0.633,
+      "refitted": false
+    },
+    "246": {
+      "lon": 94.355,
+      "lat": -1.374,
+      "roll": -2.539,
+      "score": 0.677,
+      "refitted": false
+    },
+    "513": {
+      "lon": 42.025,
+      "lat": 0.308,
+      "roll": -0.854,
+      "score": 0.593,
+      "refitted": false
+    },
+    "520": {
+      "lon": 33.616,
+      "lat": -2.13,
+      "roll": -0.145,
+      "score": 0.631,
+      "refitted": false
+    },
+    "625": {
+      "lon": 18.02,
+      "lat": -3.791,
+      "roll": 1.05,
+      "score": 0.644,
+      "refitted": false
+    },
+    "769": {
+      "lon": -14.199,
+      "lat": -1.208,
+      "roll": 1.291,
+      "score": 0.666,
+      "refitted": false
+    },
+    "821": {
+      "lon": -26.093,
+      "lat": -1.528,
+      "roll": 0.343,
+      "score": 0.599,
+      "refitted": false
+    },
+    "906": {
+      "lon": -39.426,
+      "lat": 1.009,
+      "roll": -2.722,
+      "score": 0.466,
+      "refitted": true
+    },
+    "1007": {
+      "lon": -63.622,
+      "lat": 5.24,
+      "roll": -3.115,
+      "score": 0.527,
+      "refitted": true
+    },
+    "1148": {
+      "lon": -94.658,
+      "lat": -0.937,
+      "roll": 5.621,
+      "score": 0.58,
+      "refitted": false
+    }
+  }
+}

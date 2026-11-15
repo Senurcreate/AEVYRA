@@ -4,14 +4,20 @@ Offline preprocessing for the "night-lights" story. Everything here describes **
 of NASA's SVS visualization (https://svs.gsfc.nasa.gov/5276/). The values are **not** measured radiance,
 temperature or emissions.
 
-> **Known limitation (read first).** The source frames are a *rendered* map: a daytime-style land/ice base layer
-> plus city lights. K-means on pixel colour therefore groups the base map too:
-> tier 1 ≈ dark land, tier 2 ≈ bright land / desert / snow / ice (e.g. Sahara, Greenland, Antarctica),
-> tier 3 ≈ actual bright lights. Only tier 3 (≈0.24–0.32 % of pixels) is clearly "lights".
-> Consequently `litShare` (≈0.318) is mostly land/ice and is **not** a lights metric, and the dim/medium tiers are not
-> pure light levels. The base layer is the same every year, so year-to-year *change* fields
-> (`changeVsPrev`, `grewShare`, `fadedShare`, per-strip differences) still reflect changes in the rendered lights.
-> Do not present `litShare` / tier 1–2 as "how much of Earth is lit" until this is resolved.
+> **What the tiers mean.** The source frames are a *rendered* map: a daytime-style land/ice base layer plus city
+> lights. To keep land, snow and ice out of the "lit" numbers, tiers are defined on **light pixels only**:
+> tier 0 = **no light** (ocean, land, desert, snow, ice: anything with brightness ≤ `lightThreshold`, 55/255),
+> tiers 1-3 = dim / medium / bright **lights** (K-means on the light pixels).
+> Measured on the 2012 frame: ice/snow brightness ≈ 48-50, desert ≈ 43, so a cutoff of 55 separates lights from the
+> base map.
+>
+> **Known limits.**
+> - Lights dimmer than the cutoff are counted as tier 0 (faint rural lights, especially over bright ground such as
+>   desert or snow, are lost). Sparse regions such as Africa therefore look emptier than they are in the picture.
+> - Values are small: `litShare` is about 0.006-0.009 (0.6-0.9 % of the map). Scale per field across the 12 years
+>   if you map them to sound or UI (min-max over years); the trend is real: +40 % from 2012 to 2023.
+> - The earlier version (K-means on all pixels, `litShare` ≈ 0.318) mixed land and ice into tiers 1-2. It is kept in
+>   `diagnostics/features_before_lights_fix.json` for comparison only.
 
 ## Files
 
@@ -30,11 +36,14 @@ Top level:
 |---|---|---|
 | `storyId` | string | `"night-lights"` |
 | `sourceUrl` | string | `"https://svs.gsfc.nasa.gov/5276/"` |
-| `method` | string | `"kmeans-pooled"` |
-| `k` | int | `4` |
+| `method` | string | `"kmeans-lights-log"` |
+| `k` | int | `4`: tier 0 (no light) + 3 light tiers |
 | `seed` | int | `42` |
 | `stripCount` | int | `48` |
 | `analysisResolution` | string | `"7680x4320"`: every number in the file is computed on the full-size frames, not on the 1600 px display images |
+| `lightThreshold` | number | `55`: brightness (0-255, Rec.709 luma) above which a pixel counts as a light |
+| `tierFeature` | string | `"log(1 + brightness 0-255)"`: the value K-means clusters on |
+| `tierCentroidBrightness` | (number\|null)[4] | typical brightness (0-255) of each tier; `[0]` is `null` (tier 0 is the cutoff, not a cluster). Currently `[null, 66.4, 105.2, 185.3]` |
 | `cropBox` | object | `{x0,y0,x1,y1}` in source pixels of the 7680×4320 frame: `{0,0,7680,4320}` (the map fills the whole frame; no black bars). A year caption inside the map (x 3250–3800, y 2600–2820 in source pixels) is painted over with the surrounding ocean colour, identically in every year. |
 | `frames` | array | 12 records, ascending by year |
 
@@ -46,15 +55,15 @@ Per frame (all shares are fractions of pixels, **0–1**; floats rounded to 6 de
 | `year` | int | 2012–2023 |
 | `image` | string | file name only, e.g. `"nl-2012.webp"` (lives in `output/frames/`) |
 | `alt` | string | `"TODO"` placeholder |
-| `tierShares` | number[4] | index = tier: `[0]` dark background, `[1]` dim, `[2]` medium, `[3]` bright. Sums to 1 |
-| `litShare` | number | 0–1, share of tiers 1–3 (= 1 − tierShares[0]). See limitation above |
-| `meanBrightness` | number | 0–1, mean Rec.709 luma (÷255) of tier 1–3 pixels |
-| `centroidX` | number | 0–1, luma-weighted mean horizontal position over all pixels (0 = left edge, 1 = right edge) |
+| `tierShares` | number[4] | index = tier: `[0]` no light (≈0.99), `[1]` dim, `[2]` medium, `[3]` bright lights. Sums to 1 |
+| `litShare` | number | 0–1, share of light pixels (tiers 1–3, = 1 − tierShares[0]). About 0.0061 (2012) → 0.0085 (2023) |
+| `meanBrightness` | number | 0–1, mean Rec.709 luma (÷255) of light pixels (tiers 1–3) |
+| `centroidX` | number | 0–1, brightness-weighted mean horizontal position of light pixels only (0 = left edge, 1 = right edge) |
 | `changeVsPrev` | number \| null | 0–1, share of pixels whose tier differs from the previous year; `null` for 2012 |
 | `grewShare` | number \| null | 0–1, share of pixels moved to a higher tier vs previous year; `null` for 2012 |
 | `fadedShare` | number \| null | 0–1, share moved to a lower tier; `null` for 2012. `grewShare + fadedShare = changeVsPrev` |
 | `strips` | number[48][4] | 48 equal-width vertical strips, left→right; each is `[tier0..tier3]` shares within that strip (sums to 1) |
-| `baselineLitShare` | number | 0–1, share of pixels with luma > 25/255 (simple threshold, for comparison) |
+| `baselineLitShare` | number | 0–1, share of pixels with luma > 25/255 (simple threshold, for comparison; includes land/ice, so it is ≈0.26, not a lights metric) |
 | `verified` | boolean | `false` until a human has checked the frame |
 
 ## How it was made
@@ -64,9 +73,10 @@ Per frame (all shares are fractions of pixels, **0–1**; floats rounded to 6 de
    effectively opaque everywhere).
 3. `scripts/crop_check.py` – writes the shared crop box and caption mask + `diagnostics/crop_check.png`.
 4. `scripts/build_features.py` – works at **full resolution (7680×4320)**, one frame in memory at a time:
-   - Pass 1: mask the caption, crop, and take a seeded random sample of ~200 000 pixels pooled evenly from all 12
-     full-size frames (16 666 per year); fit **one** `KMeans(k=4, n_init=10, random_state=42)` on their RGB values;
-     sort clusters by centroid luma so tier 0 = darkest.
+   - Pass 1: mask the caption, crop, and take a seeded random sample of 240 000 **light** pixels (brightness > 55),
+     20 000 per year from all 12 full-size frames; fit **one** `KMeans(k=3, n_init=10, random_state=42)` on
+     `log(1 + brightness)`; sort clusters by brightness so tier 1 = dimmest light, tier 3 = brightest. Everything
+     at or below the cutoff is tier 0.
    - Pass 2: for each frame, classify every pixel in blocks of ~2 million pixels and compute all features above from
      the full-size tier map (the previous year's tier map is kept for the change fields).
    - Separately saves the 1600×900 Lanczos-resized WebP (q90) for display. Resizing/compression never feeds the numbers.
@@ -74,6 +84,22 @@ Per frame (all shares are fractions of pixels, **0–1**; floats rounded to 6 de
 
 Deterministic: two consecutive full runs give byte-identical `features.json` and WebP files
 (`scripts/run_twice_check.py`).
+
+## Regions (explore by region)
+
+Top level `regions` lists 7 regions: `antarctica, africa, europe, southAmerica, northAmerica, oceania, asia`, each with
+its lon/lat boxes, `pixelCount`, `mapShare` and `pixelBox` (x0, y0, x1, y1 on the full map).
+Every frame has `frames[i].regions.<id>` with the same kind of numbers as the whole map, but computed from that
+region's pixels only (full resolution, same K-means, nothing resampled):
+`tierShares, litShare, meanBrightness, centroidLon (degrees), changeVsPrev, grewShare, fadedShare, strips, baselineLitShare`
+
+Rules and limits:
+- Regions are lon/lat RECTANGLES on the flat map (`scripts/regions.py`), not coastlines: they include nearby sea.
+  Each pixel belongs to the first matching region, so regions never overlap. Open ocean far from land is in no region.
+- Shares are shares of the region's own pixels (not of the whole map).
+- Strips run west to east across the region's pixel box (48 strips). A strip with no region pixels is `null`.
+- Old whole-map fields are unchanged (checked: identical to the version before regions were added).
+- Same colour/brightness caveats as above: shares of a rendered image, not measured amounts.
 
 ## Rerun
 
