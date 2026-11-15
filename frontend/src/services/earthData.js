@@ -47,7 +47,7 @@ export function parseDataset(input, { demo = false, base, steps = YEARS } = {}) 
   })
 
   for (const record of input.records) {
-    const step = record?.frameIndex ?? record?.year
+    const step = record?.frameIndex ?? record?.frameNumber ?? record?.year
     if (!availableSteps.has(step) || !seenRegions.has(record.regionId)) continue
     const key = JSON.stringify([record.regionId, step])
     if (records.has(key)) continue

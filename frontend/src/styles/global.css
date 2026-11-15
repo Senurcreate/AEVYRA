@@ -181,8 +181,7 @@ h1,h2,h3,p,figure,dl,dd { margin: 0; }
 .frame-empty { display: grid; height: 100%; place-content: center; justify-items: center; gap: 12px; min-height: 130px; color: #aeb7bd; font-size: 13px; }
 .earth-frame figcaption { width: 100%; min-height: 43px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 10px; padding: 13px 20px; border-top: 1px solid var(--line-soft); color: #b5bec4; font: .75rem var(--mono); }
 .scan-overlay { position: absolute; inset: 0; z-index: 1; pointer-events: none; overflow: hidden; }
-.scan-overlay::after { content: ''; position: absolute; inset: 8% auto 8% 4%; width: 1px; background: var(--ice); box-shadow: 0 0 7px 1px #a8e4ff7a; animation: frame-scan 1.2s linear both; }
-@keyframes frame-scan { 0% { opacity: 0; left: 4%; } 20%, 74% { opacity: .42; } 100% { opacity: 0; left: 96%; } }
+.scan-overlay::after { content: ''; position: absolute; inset: 8% auto 8% var(--scan-position, 4%); width: 1px; background: var(--ice); box-shadow: 0 0 7px 1px #a8e4ff7a; opacity: var(--scan-opacity, 0); }
 @keyframes frame-in { from { opacity: .55; } to { opacity: 1; } }
 .regional-visual { flex-direction: column; }
 .globe-viewport { position: relative; height: clamp(325px, 34vw, 440px); background: var(--void); }
@@ -196,6 +195,12 @@ h1,h2,h3,p,figure,dl,dd { margin: 0; }
 .globe-marker span { visibility: hidden; background: #080a0c; border: 1px solid var(--line); padding: 5px 8px; position: absolute; top: calc(100% - 3px); color: var(--text); font: .75rem var(--mono); white-space: nowrap; pointer-events: none; }
 .globe-marker:hover span, .globe-marker:focus-visible span, .globe-marker[aria-pressed='true'] span { visibility: visible; }
 .regional-frame { display: grid; grid-template-columns: minmax(0,1fr) minmax(138px, 33%); align-items: stretch; border-top: 1px solid var(--line); min-width: 0; }
+/* A region is shown as a zoomed window of the global image, so it gets a wide row of its own instead of the small thumbnail. */
+.regional-frame:has(.is-region) { grid-template-columns: minmax(0,1fr); }
+.regional-frame .is-region .frame-media { height: auto; aspect-ratio: var(--region-aspect, 16 / 9); width: min(100%, calc(300px * var(--region-aspect, 1.78))); margin-inline: auto; }
+.is-region .frame-media img { animation: none; }
+.region-outline { position: absolute; z-index: 1; border: 1px solid #a8e4ffb0; box-shadow: 0 0 0 1px #0007; pointer-events: none; }
+.frame-note { margin: 0; padding: 8px 20px 12px; border-top: 1px solid var(--line-soft); color: #b5bec4; font: .75rem var(--mono); }
 .region-selector { padding: 16px 20px; display: grid; align-content: center; gap: 6px; }
 .region-selector select { width: 100%; }
 .regional-frame .frame-media { height: 86px; }
@@ -243,6 +248,7 @@ h1,h2,h3,p,figure,dl,dd { margin: 0; }
 .timeline-year[aria-current] { color: var(--ice); }
 .timeline-year[aria-current] .year-notch { width: 7px; height: 7px; margin: 2px 0; background: var(--ice); transform: rotate(45deg); box-shadow: 0 0 6px #a8e4ff40; }
 .timeline-year:hover { color: var(--ice); }
+.timeline-label { white-space: pre-line; line-height: 1.2; }
 .timeline-year.no-data .year-notch { background: #505860; }
 .transport { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-top: 3px; }
 .transport p { color: #aeb3b8; max-width: 425px; line-height: 1.55; font-size: 1rem; }

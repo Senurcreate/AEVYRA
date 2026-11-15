@@ -1,744 +1,189 @@
-import {
-  Component,
-  lazy,
-  Suspense,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
+import { Component, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Headphones } from 'lucide-react'
+import { EarthFrame } from './EarthFrame'
+import { ExplorerTabs, ObservationTimeline, PlaybackControls, RegionSelector } from './ExplorerControls'
+import ScientificReadout from './ScientificReadout'
+import SoundPanel from './SoundPanel'
+import { useTimeline } from '../../hooks/useTimeline'
+import { useReducedMotion } from '../../hooks/useReducedMotion'
+import { getFeatureFrame } from '../../sonification/adapters/mlFeatures'
+import { getRegionView } from '../../data/regionView'
+import { mapReferenceFrame, SCORE_SECONDS } from '../../sonification/mappings/referenceProfiles'
+import { useExclusiveSonification } from '../../sonification/hooks/useExclusiveSonification'
 
-import { Headphones } from 'lucide-react';
-
-import { EarthFrame } from './EarthFrame';
-import {
-  ExplorerTabs,
-  ObservationTimeline,
-  PlaybackControls,
-  RegionSelector,
-} from './ExplorerControls';
-import ScientificReadout from './ScientificReadout';
-import SoundPanel from './SoundPanel';
-
-import { useTimeline } from '../../hooks/useTimeline';
-import { useReducedMotion } from '../../hooks/useReducedMotion';
-
-import { useExclusiveSonification } from '../../sonification/hooks/useExclusiveSonification';
-import { adaptNightLights } from '../../sonification/adapters/nightLightsAdapter';
-import nightLightsFeatures from '../../data/night-lights-features.json';
-import { aerosolFrames } from '../../sonification/adapters/aerosolsAdapter';
-import co2Features from '../../data/co2.features.json';
-
-const EarthGlobe = lazy(() => import('./EarthGlobe'));
-
-// -------------------------------------------------------
-// Night Lights ML telemetry
-// -------------------------------------------------------
-
-const nightLightsTelemetry = adaptNightLights(
-  nightLightsFeatures
-);
-
-const telemetryByYear = new Map(
-  nightLightsTelemetry.map((frame) => [
-    Number(frame.year),
-    frame,
-  ])
-);
-
-/**
- * Resolve a telemetry frame from either:
- * - a year, such as 2012
- * - an index, such as 0
- *
- * Also handles numeric strings.
- */
-function resolveFrame(step, steps = []) {
-  if (step === undefined || step === null) {
-    return null;
-  }
-
-  const numericStep = Number(step);
-
-  // First try the year directly.
-  if (telemetryByYear.has(numericStep)) {
-    return telemetryByYear.get(numericStep);
-  }
-
-  // Then try its position in dataset.steps.
-  const index = steps.findIndex(
-    (value) => String(value) === String(step)
-  );
-
-  if (index >= 0 && index < nightLightsTelemetry.length) {
-    return nightLightsTelemetry[index];
-  }
-
-  // Finally support a zero-based index directly.
-  if (
-    Number.isInteger(numericStep) &&
-    numericStep >= 0 &&
-    numericStep < nightLightsTelemetry.length
-  ) {
-    return nightLightsTelemetry[numericStep];
-  }
-
-  return null;
-}
-
-/**
- * Prevent the Night Lights engine from being connected
- * to a completely different Earth story.
- */
-function isNightLightsStory(story, dataset) {
-  const identifiers = [
-    story?.id,
-    story?.slug,
-    dataset?.id,
-    dataset?.storyId,
-    nightLightsFeatures?.storyId,
-  ];
-
-  const selectedIdentifiers = identifiers
-    .slice(0, 4)
-    .filter(Boolean);
-
-  const hasNightLightsIdentifier = selectedIdentifiers.some(
-    (value) => {
-      const id = String(value).toLowerCase();
-      return (
-        id.includes('night-light') ||
-        id.includes('night_light') ||
-        id.includes('nightlight')
-      );
-    }
-  );
-
-  if (hasNightLightsIdentifier) {
-    return true;
-  }
-
-  // Fallback for datasets without a story ID:
-  // match a Night Lights title and a compatible timeline.
-  const title = [
-    story?.title,
-    dataset?.title,
-  ].filter(Boolean).join(' ').toLowerCase();
-
-  const titleMatches =
-    title.includes('night') &&
-    title.includes('light');
-
-  const steps = dataset?.steps ?? [];
-
-  const timelineMatches =
-    steps.length > 0 &&
-    steps.every((step) => {
-      const year = Number(step);
-      return (
-        telemetryByYear.has(year) ||
-        (
-          Number.isInteger(year) &&
-          year >= 0 &&
-          year < nightLightsTelemetry.length
-        )
-      );
-    });
-
-  return titleMatches && timelineMatches;
-}
-
-// Match the selected Explorer card to its source feature frames.
-const aerosolByStep = new Map(aerosolFrames.map(f => [Number(f.frameIndex), f]));
-const co2ByStep = new Map(co2Features.frames.map(f => [Number(f.frameNumber), f]));
-function datasetKind(story, dataset) {
-  if (story?.path === '/night-lights') return 'night-lights';
-  if (story?.path === '/geos-aerosols') return 'aerosols';
-  if (story?.path === '/dyamond-carbon-dioxide') return 'co2';
-  const identity = [story?.id, story?.slug, story?.title, dataset?.id, dataset?.title].filter(Boolean).join(' ').toLowerCase();
-  if (identity.includes('aerosol')) return 'aerosols';
-  if (identity.includes('co2') || identity.includes('co₂') || identity.includes('carbon dioxide')) return 'co2';
-  if (isNightLightsStory(story, dataset)) return 'night-lights';
-  return null;
-}
-function findSoundFrame(kind, step, steps) {
-  if (kind === 'night-lights') return resolveFrame(step, steps);
-  if (kind === 'aerosols') return aerosolByStep.get(Number(step)) ?? null;
-  if (kind === 'co2') return co2ByStep.get(Number(step)) ?? null;
-  return null;
-}
-
-// -------------------------------------------------------
-// Globe error boundary
-// -------------------------------------------------------
+const EarthGlobe = lazy(() => import('./EarthGlobe'))
 
 class GlobeBoundary extends Component {
-  state = { failed: false };
+  state = { failed: false }
 
   static getDerivedStateFromError() {
-    return { failed: true };
+    return { failed: true }
   }
 
   render() {
     if (this.state.failed) {
-      return (
-        <p className="globe-status" role="status">
-          Globe unavailable. Choose a region from the list.
-        </p>
-      );
+      return <p className="globe-status" role="status">Globe unavailable. Choose a region from the list.</p>
     }
-
-    return this.props.children;
+    return this.props.children
   }
 }
 
-// -------------------------------------------------------
-// Main Symphony section
-// -------------------------------------------------------
-
-export default function Symphony({
-  story,
-  dataset,
-  status,
-  error,
-  retry,
-}) {
-  return (
-    <section
-      id="experience"
-      className="shell experience section-space"
-      aria-labelledby="experience-title"
-    >
-      <div className="experience-heading section-heading">
-        <h2 id="experience-title">
-          {story?.title}
-        </h2>
-
-        {dataset && (
-          <span className="instrument-label section-note">
-            <Headphones
-              size={15}
-              aria-hidden="true"
-            />
-            Explore with sound
-          </span>
-        )}
-      </div>
-
-      {dataset ? (
-        <SymphonyPlayer
-          key={story?.path ?? dataset?.id ?? 'earth'}
-          dataset={dataset}
-          story={story}
-        />
-      ) : (
-        <div className="angular-glass glass-inset">
-          {status === 'unavailable' && (
-            <p>{story?.description}</p>
-          )}
-
-          {status === 'loading' && (
-            <p role="status">
-              Loading observations…
-            </p>
-          )}
-
-          {status === 'error' && (
-            <>
-              <p role="alert">{error}</p>
-
-              <button
-                type="button"
-                className="quiet-button"
-                onClick={retry}
-              >
-                Retry loading observations
-              </button>
-            </>
-          )}
-        </div>
-      )}
-    </section>
-  );
+export default function Symphony({ story, dataset, status, error, retry }) {
+  return <section id="experience" className="shell experience section-space" aria-labelledby="experience-title">
+    <div className="experience-heading section-heading">
+      <h2 id="experience-title">{story.title}</h2>
+      {dataset && <span className="instrument-label section-note"><Headphones size={15} aria-hidden="true" /> Explore with sound</span>}
+    </div>
+    {dataset ? <SymphonyPlayer key={story.path} dataset={dataset} story={story} /> :
+      <div className="angular-glass glass-inset">
+        {status === 'unavailable' && <p>{story.description}</p>}
+        {status === 'loading' && <p role="status">Loading observations…</p>}
+        {status === 'error' && <>
+          <p role="alert">{error}</p>
+          <button type="button" className="quiet-button" onClick={retry}>Retry loading observations</button>
+        </>}
+      </div>}
+  </section>
 }
-
-// -------------------------------------------------------
-// Symphony player
-// -------------------------------------------------------
 
 function SymphonyPlayer({ dataset, story }) {
-  const { timeline: labels, frameCaption } = story;
-
-  const [mode, setMode] = useState('global');
-  const [globeRequested, setGlobeRequested] =
-    useState(false);
-
-  const [selected, setSelected] = useState(
-    dataset.regions?.[0]?.id
-  );
-
-  const [track, setTrack] = useState('changing');
-
-  const timeline = useTimeline(dataset.steps);
-  const reduced = useReducedMotion();
-  const audio = useExclusiveSonification();
-
-  // Detect a true -> false timeline transition.
-  const previousTimelinePlaying = useRef(
-    timeline.playing
-  );
-
-  const hasFrames =
-    timeline.step !== undefined &&
-    timeline.step !== null;
-
-  const region =
-    mode === 'global'
-      ? 'global'
-      : selected;
-
-  const name =
-    mode === 'global'
-      ? 'Global Earth'
-      : dataset.regions?.find(
-          (item) => item.id === selected
-        )?.name ?? 'Selected Region';
-
-  const record = dataset.getRecord(
-    timeline.step,
-    region
-  );
-
-  const kind = datasetKind(story, dataset);
-  const frame = findSoundFrame(kind, timeline.step, dataset.steps);
-  const available = Boolean(kind && frame && mode === 'global');
-
-  const frameKey = `${region}-${timeline.step}`;
-
-  const stepLabel = hasFrames
-    ? labels.format(timeline.step)
-    : '';
-
-  const timeLabel =
-    hasFrames && frameCaption
-      ? `${labels.label} ${stepLabel}`
-      : stepLabel;
+  const { timeline: labels, frameCaption, sonificationId: kind } = story
+  const [mode, setMode] = useState('global')
+  const [globeRequested, setGlobeRequested] = useState(false)
+  const [selected, setSelected] = useState(dataset.regions[0]?.id)
+  const [track, setTrack] = useState('changing')
+  const timeline = useTimeline(dataset.steps)
+  const audio = useExclusiveSonification()
+  const reduced = useReducedMotion()
+  const region = mode === 'regional' ? selected : 'global'
+  const name = mode === 'regional' ? dataset.regions.find(item => item.id === selected)?.name : 'Global Earth'
+  const hasFrames = timeline.step !== undefined
+  const record = dataset.getRecord(timeline.step, region)
+  const globalRecord = dataset.getRecord(timeline.step)
+  const frame = getFeatureFrame(kind, timeline.step, region)
+  const frameKey = region + '-' + timeline.step
+  // Regional views are a zoomed window of the global image; a CO₂ region facing away from the camera has none.
+  const regionInfo = mode === 'regional' && kind ? getRegionView(kind, timeline.step, region) : null
+  const regionView = regionInfo?.status === 'ok' ? regionInfo.view : undefined
+  const hiddenNote = regionInfo?.status === 'hidden'
+    ? name + ' faces away from the camera in this frame (' + Math.round(100 * regionInfo.visibleFraction) + '% visible), so it has no regional values.'
+    : undefined
+  const regionNote = hiddenNote ?? (regionView?.approximate ? 'The globe rotates, so this window and its region edges are approximate.' : undefined)
+  const stepLabel = hasFrames ? labels.format(timeline.step) : ''
+  const mappings = useMemo(() => new Map(dataset.steps.map(step => [
+    step, mapReferenceFrame(kind, getFeatureFrame(kind, step, region)),
+  ])), [dataset.steps, kind, region])
+  const controls = useRef(mappings)
+  useLayoutEffect(() => { controls.current = mappings }, [mappings])
+  const { schedule } = timeline
+  const controlsAt = useCallback(position => controls.current.get(schedule.at(position).step) ?? null, [schedule])
+  // The sound travels left to right with the scanner line, which uses this same progress.
+  const scanAt = useCallback(position => schedule.at(position).progress, [schedule])
 
   useEffect(() => {
-    if (available && frame) audio.applyFrame(frame, kind, co2Features.groups);
-  }, [available, frame, kind, audio.applyFrame]);
+    audio.applyFrame(frame, kind)
+  }, [audio.applyFrame, frame, kind])
 
-  // Stop sound if the selected view has no sonification.
+  const nextImage = dataset.getRecord(timeline.next, region)?.image ?? dataset.getRecord(timeline.next)?.image
   useEffect(() => {
-    if (!available) {
-      audio.stop();
-    }
-  }, [
-    available,
-    audio.stop,
-  ]);
-
-  // Stop audio when the timeline reaches its end.
-  // Do not stop independently started sound previews.
-  useEffect(() => {
-    if (
-      previousTimelinePlaying.current &&
-      !timeline.playing
-    ) {
-      audio.stop();
-    }
-
-    previousTimelinePlaying.current =
-      timeline.playing;
-  }, [
-    timeline.playing,
-    audio.stop,
-  ]);
-
-  // -----------------------------------------------------
-  // Diagnostics
-  // -----------------------------------------------------
-
-  useEffect(() => {
-    console.log(
-      '[AEVYRA] Night Lights connection:',
-      {
-        storyId: story?.id,
-        datasetId: dataset?.id,
-        currentStep: timeline.step,
-        kind,
-        frameFound: Boolean(frame),
-        frameYear: frame?.year,
-        available,
-      }
-    );
-  }, [
-    story?.id,
-    dataset?.id,
-    timeline.step,
-    kind,
-    frame,
-    available,
-  ]);
-
-  // -----------------------------------------------------
-  // Mode switching
-  // -----------------------------------------------------
-
-  function selectMode(nextMode) {
-    if (nextMode === mode) {
-      return;
-    }
-
-    audio.stop();
-
-    if (timeline.playing) {
-      timeline.toggle();
-    }
-
-    setMode(nextMode);
-
-    if (nextMode === 'regional') {
-      setGlobeRequested(true);
-    }
-  }
-
-  // -----------------------------------------------------
-  // Main Play / Pause button
-  // -----------------------------------------------------
+    if (!nextImage) return
+    const image = new Image()
+    image.src = nextImage.src
+  }, [nextImage])
 
   async function toggleTimeline() {
-    console.log('[AEVYRA] Play clicked');
-
     if (timeline.playing) {
-      timeline.toggle();
-      audio.stop();
-      return;
+      audio.pause()
+      timeline.pause(audio.elapsed())
+      return
     }
-
-    if (!available) {
-      console.error(
-        '[AEVYRA] Cannot start playback:',
-        {
-          storyId: story?.id,
-          kind,
-          mode,
-          step: timeline.step,
-          frameFound: Boolean(frame),
-        }
-      );
-      return;
+    if (audio.status === 'loading') {
+      audio.stop()
+      return
     }
-
-    const steps = dataset.steps ?? [];
-
-    if (!steps.length) {
-      console.error(
-        '[AEVYRA] Dataset has no timeline steps.'
-      );
-      return;
-    }
-
-    const lastStep = steps.at(-1);
-
-    // useTimeline restarts at the first step when
-    // the current step is the last one.
-    const startStep =
-      timeline.step === lastStep
-        ? steps[0]
-        : timeline.step;
-
-    const startFrame = findSoundFrame(kind, startStep, steps);
-
-    if (!startFrame) {
-      console.error(
-        '[AEVYRA] Telemetry not found:',
-        startStep
-      );
-      return;
-    }
-
-    try {
-      console.log(
-        '[AEVYRA] Starting sonification:',
-        {
-          track,
-          frameId: startFrame.frameId ?? startFrame.year,
-        }
-      );
-
-      const started = await audio.start(track, startFrame, kind, co2Features.groups);
-
-      if (!started) {
-        console.error(
-          '[AEVYRA] Audio engine failed to start.'
-        );
-        return;
-      }
-
-      // Start timeline only after Tone.js succeeds.
-      timeline.toggle();
-
-      console.log(
-        '[AEVYRA] Playback started successfully.'
-      );
-    } catch (err) {
-      console.error(
-        '[AEVYRA] Playback error:',
-        err
-      );
-    }
-  }
-
-  // -----------------------------------------------------
-  // Reference / Changing tone selection
-  // -----------------------------------------------------
-
-  async function selectTrack(nextTrack) {
-    if (!available || !frame) {
-      return;
-    }
-
-    if (nextTrack === track) {
-      if (audio.playing) {
-        audio.stop();
-
-        if (timeline.playing) {
-          timeline.toggle();
-        }
-      } else {
-        await audio.start(nextTrack, frame, kind, co2Features.groups);
-      }
-
-      return;
-    }
-
-    audio.stop();
-    setTrack(nextTrack);
-
-    // Selecting a tone can preview it immediately.
-    // The timeline is not started automatically.
-    try {
-      await audio.start(nextTrack, frame, kind, co2Features.groups);
-    } catch (err) {
-      console.error(
-        '[AEVYRA] Track selection error:',
-        err
-      );
-    }
-  }
-
-  // -----------------------------------------------------
-  // Manual timeline selection
-  // -----------------------------------------------------
-
-  function selectStep(nextStep) {
-    // Stop old audio first, then update the year.
-    audio.stop();
-    timeline.select(nextStep);
-
-    console.log(
-      '[AEVYRA] Selected timeline step:',
-      nextStep
-    );
+    if (!kind) return
+    const started = audio.status === 'paused' ? audio.resume() : await audio.start(
+      track, frame, kind, {
+        controlsAt, scanAt, offset: timeline.offset, duration: schedule.duration, speed: timeline.speed,
+        onEnd: timeline.finish, onInterrupt: timeline.pause,
+      },
+    )
+    if (started) timeline.play(audio.elapsed)
   }
 
   function stopAudio() {
-    audio.stop();
-
-    if (timeline.playing) {
-      timeline.toggle();
-    }
+    timeline.pause(timeline.playing ? audio.elapsed() : undefined)
+    audio.stop()
   }
 
-  // -----------------------------------------------------
-  // Render existing UI
-  // -----------------------------------------------------
+  function selectStep(step) {
+    const offset = schedule.offsetOf(step)
+    if (offset == null) return
+    if (timeline.playing || audio.status === 'paused') audio.seek(offset)
+    else audio.stop()
+    timeline.update(offset)
+  }
 
-  return (
-    <div className="angular-panel angular-glass glass-sweep">
-      <div className="explorer-top">
-        <ExplorerTabs
-          mode={mode}
-          onChange={selectMode}
-          regionalAvailable={
-            (dataset.regions?.length ?? 0) > 0
-          }
-          globalLabel={
-            available
-              ? 'Listen to Earth'
-              : hasFrames
-                ? 'Global View'
-                : 'Preview'
-          }
-        />
+  function selectSpeed(speed) {
+    audio.setSpeed(speed)
+    timeline.setSpeed(speed)
+  }
 
-        {dataset.demoAudio && !available && (
-          <span className="demo-tag">
-            <i className="signal-dot" />
-            Demo audio
-          </span>
-        )}
-      </div>
+  function selectMode(nextMode) {
+    setMode(nextMode)
+    if (nextMode === 'regional') setGlobeRequested(true)
+  }
 
-      {/* Global Earth visualization */}
-      <div
-        id="explorer-global"
-        role="tabpanel"
-        aria-labelledby="tab-global"
-        className="explorer-visual"
-        hidden={mode !== 'global'}
-      >
-        {mode === 'global' && (
-          <EarthFrame
-            key={frameKey}
-            image={
-              hasFrames
-                ? record?.image
-                : story.cover
-            }
-            stepLabel={timeLabel}
-            regionId={region}
-            demo={dataset.demo}
-            caption={frameCaption}
-          />
-        )}
-      </div>
+  function selectTrack(nextTrack) {
+    const togglingOff = track === nextTrack && audio.status !== 'idle'
+    stopAudio()
+    setTrack(nextTrack)
+    if (togglingOff || (nextTrack === 'changing' && !frame)) return
+    const duration = nextTrack === 'changing' ? SCORE_SECONDS : undefined
+    void audio.start(nextTrack, frame, kind, { duration, speed: timeline.speed })
+  }
 
-      {/* Regional Earth visualization */}
-      <div
-        id="explorer-regional"
-        role="tabpanel"
-        aria-labelledby="tab-regional"
-        className="explorer-visual regional-visual"
-        hidden={mode !== 'regional'}
-      >
-        <div className="globe-viewport">
-          {globeRequested && (
-            <GlobeBoundary>
-              <Suspense
-                fallback={
-                  <p
-                    className="globe-status"
-                    role="status"
-                  >
-                    Loading interactive globe…
-                  </p>
-                }
-              >
-                <EarthGlobe
-                  mode={mode}
-                  texture={dataset.globeTexture}
-                  regions={dataset.regions}
-                  selected={selected}
-                  onSelect={setSelected}
-                  reduced={reduced}
-                />
-              </Suspense>
-            </GlobeBoundary>
-          )}
-        </div>
-
-        {mode === 'regional' && (
-          <div className="regional-frame">
-            <RegionSelector
-              regions={dataset.regions}
-              selected={selected}
-              onSelect={setSelected}
-            />
-
-            <EarthFrame
-              key={frameKey}
-              image={record?.image}
-              stepLabel={timeLabel}
-              regionId={region}
-              demo={
-                dataset.demo ||
-                dataset.demoRegions
-              }
-              caption={frameCaption}
-            />
-          </div>
-        )}
-      </div>
-
-      {/* Scientific data */}
-      <div className="explorer-data">
-        <ScientificReadout
-          story={story}
-          record={record}
-          name={name}
-          stepLabel={timeLabel}
-          demoRegion={
-            mode === 'regional' &&
-            dataset.demoRegions
-          }
-        />
-      </div>
-
-      {/* Timeline and audio controls */}
-      <div className="explorer-bottom">
-        {hasFrames && (
-          <ObservationTimeline
-            step={timeline.step}
-            steps={dataset.steps}
-            labels={labels}
-            onSelect={selectStep}
-            getRecord={(step) =>
-              dataset.getRecord(step, region)
-            }
-          />
-        )}
-
-        <div className="transport">
-          <PlaybackControls
-            timeline={timeline}
-            labels={labels}
-            onToggle={toggleTimeline}
-            muted={audio.muted}
-            hasAudio={available}
-            onMute={() =>
-              audio.setMuted(!audio.muted)
-            }
-          />
-
-          <p>
-            {dataset.description || dataset.title}
-
-            {hasFrames &&
-              !available &&
-              !dataset.hasAudio &&
-              ' Audio is pending.'}
-          </p>
-        </div>
-
-        {/* Keep panel visible for Night Lights
-            even when telemetry is unavailable. */}
-        {Boolean(kind) && (
-          <SoundPanel
-            audio={audio}
-            track={track}
-            onTrack={selectTrack}
-            available={available}
-            reduced={reduced}
-            onStop={stopAudio}
-          />
-        )}
-      </div>
-
-      {/* Screen reader timeline announcement */}
-      {hasFrames && (
-        <p
-          className="sr-only"
-          role="status"
-          aria-atomic="true"
-        >
-          {timeline.playing
-            ? ''
-            : `${name}, ${labels.format(
-                timeline.manualStep
-              )}`}
-        </p>
-      )}
+  return <div className="angular-panel angular-glass glass-sweep">
+    <div className="explorer-top">
+      <ExplorerTabs mode={mode} onChange={selectMode} regionalAvailable={dataset.regions.length > 0}
+        globalLabel={kind ? 'Listen to Earth' : hasFrames ? 'Global View' : 'Preview'} />
     </div>
-  );
+
+    <div id="explorer-global" role="tabpanel" aria-labelledby="tab-global" className="explorer-visual" hidden={mode !== 'global'}>
+      {mode === 'global' && <EarthFrame key={frameKey} image={hasFrames ? record?.image : story.cover}
+        step={timeline.step} stepLabel={stepLabel} scannerRef={timeline.scannerRef} regionId={region} demo={dataset.demo} caption={frameCaption} />}
+    </div>
+
+    <div id="explorer-regional" role="tabpanel" aria-labelledby="tab-regional" className="explorer-visual regional-visual" hidden={mode !== 'regional'}>
+      <div className="globe-viewport">
+        {globeRequested && <GlobeBoundary>
+          <Suspense fallback={<p className="globe-status" role="status">Loading interactive globe…</p>}>
+            <EarthGlobe mode={mode} texture={dataset.globeTexture} regions={dataset.regions} selected={selected} onSelect={setSelected} reduced={reduced} />
+          </Suspense>
+        </GlobeBoundary>}
+      </div>
+      {mode === 'regional' && <div className="regional-frame">
+        <RegionSelector regions={dataset.regions} selected={selected} onSelect={setSelected} />
+        <EarthFrame key={frameKey} image={record?.image ?? globalRecord?.image} step={timeline.step}
+          stepLabel={stepLabel} scannerRef={timeline.scannerRef} regionId={region}
+          demo={dataset.demo} view={regionView} note={regionNote}
+          caption={regionView ? name + ' · zoomed from the global image' : 'Global image · regional analysis'} />
+      </div>}
+    </div>
+
+    <div className="explorer-data">
+      <ScientificReadout story={story} record={record} name={name} stepLabel={stepLabel} />
+    </div>
+    <div className="explorer-bottom">
+      {hasFrames && <ObservationTimeline step={timeline.step} steps={dataset.steps} labels={labels} onSelect={selectStep}
+        getRecord={step => dataset.getRecord(step, region)} />}
+      <div className="transport">
+        <PlaybackControls timeline={{ ...timeline, select: selectStep, setSpeed: selectSpeed }} labels={labels} onToggle={toggleTimeline}
+          muted={audio.muted} hasAudio={Boolean(kind)} onMute={() => audio.setMuted(!audio.muted)} />
+        <p>{dataset.description || dataset.title}</p>
+      </div>
+      {kind && <SoundPanel audio={audio} track={track} onTrack={selectTrack} available={Boolean(frame)} unavailableText={hiddenNote} reduced={reduced} onStop={stopAudio} />}
+    </div>
+    {hasFrames && <p className="sr-only" role="status" aria-atomic="true">{timeline.playing ? '' : name + ', ' + stepLabel}</p>}
+  </div>
 }

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { useHaptics } from '../../sonification/hooks/useHaptics'
 
 
 function Waveform({ analyser, active, reduced }) {
@@ -83,9 +84,11 @@ export default function SoundPanel({
   track,
   onTrack,
   available = true,
+  unavailableText,
   reduced,
   onStop,
 }) {
+  const haptics = useHaptics();
   const active =
     audio.playing &&
     !audio.muted &&
@@ -104,6 +107,7 @@ export default function SoundPanel({
             key={id}
             type="button"
             aria-pressed={track === id}
+            disabled={id === 'changing' && !available}
             onClick={() => onTrack(id)}
           >
             {label}
@@ -119,11 +123,11 @@ export default function SoundPanel({
 
       {!available && (
         <p className="sound-status">
-          Sonification is unavailable for this view.
+          {unavailableText ?? 'ML features are unavailable for this frame and region.'}
         </p>
       )}
 
-      {audio.playing && (
+      {audio.status !== 'idle' && (
         <button
           className="quiet-button"
           type="button"
@@ -131,6 +135,24 @@ export default function SoundPanel({
         >
           Stop sound
         </button>
+      )}
+
+      {haptics.supported && (
+        <>
+          <button
+            className="quiet-button"
+            type="button"
+            aria-pressed={haptics.enabled}
+            onClick={() => haptics.setEnabled(!haptics.enabled)}
+          >
+            Vibration: {haptics.enabled ? 'On' : 'Off'}
+          </button>
+          {haptics.enabled && (
+            <p className="sound-status">
+              The phone vibrates with the notes. If you feel nothing, turn off Do Not Disturb.
+            </p>
+          )}
+        </>
       )}
 
       {audio.error && (

@@ -1,116 +1,118 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import * as Tone from 'tone';
-import { AevyraAudioEngine } from '../audio/AudioEngine';
-import { AerosolsAudioEngine } from '../audio/AerosolsAudioEngine';
-import { createCo2AudioEngine } from '../audio/Co2AudioEngine';
-import { mapAerosolFrame } from '../mappings/aerosolsProfile';
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { start as unlockAudio } from 'tone'
+import { GeneratedAudioEngine } from '../audio/GeneratedAudioEngine.js'
+import { configureAudioContext } from '../audio/audioContext.js'
+import { hapticPlayer } from '../haptics/HapticPlayer.js'
+import { mapReferenceFrame } from '../mappings/referenceProfiles.js'
+
+// The explorer and comparison have independent controls and share one audio owner.
+let activeSession
 
 export function useExclusiveSonification() {
-  const owner = useRef(null);
-  const generation = useRef(0);
-  const mutedRef = useRef(false);
-  const [playing, setPlaying] = useState(false);
-  const [muted, setMutedState] = useState(false);
-  const [error, setError] = useState('');
-  const [analyser, setAnalyser] = useState(null);
+  const session = useRef()
+  const mutedRef = useRef(false)
+  const [status, setStatus] = useState('idle')
+  const [muted, setMutedState] = useState(false)
+  const [error, setError] = useState('')
+  const [analyser, setAnalyser] = useState(null)
+
+  const stop = useCallback(() => session.current?.cancel(), [])
+  const elapsed = useCallback(() => session.current?.engine?.elapsed() ?? 0, [])
 
   const setMuted = useCallback(value => {
-    const next = Boolean(value);
-    mutedRef.current = next;
-    setMutedState(next);
-    owner.current?.engine?.setMuted?.(next);
-    owner.current?.referenceGain?.gain.rampTo(next ? 0 : 0.10, 0.04);
-  }, []);
+    mutedRef.current = Boolean(value)
+    setMutedState(mutedRef.current)
+    session.current?.engine?.setMuted(mutedRef.current)
+  }, [])
 
-  const silence = useCallback(() => {
-    const previous = owner.current;
-    owner.current = null;
-    if (!previous) return;
-    try { previous.engine?.stop?.(); } finally {
-      previous.engine?.dispose?.();
-      previous.reference?.stop?.();
-      previous.reference?.dispose?.();
-      previous.referenceGain?.dispose?.();
-      previous.referenceAnalyser?.dispose?.();
+  const applyFrame = useCallback((frame, kind) => {
+    const entry = session.current
+    if (!entry || entry.controlsAt || entry.kind !== kind || entry.mode !== 'changing' || entry.frame === frame) return
+    entry.frame = frame
+    entry.engine?.apply(mapReferenceFrame(kind, frame))
+  }, [])
+
+  const start = useCallback(async (mode, frame, kind, options = {}) => {
+    stop()
+    activeSession?.cancel('interrupted')
+    setError('')
+    setStatus('loading')
+
+    const entry = {
+      mode, kind, frame, speed: options.speed, controlsAt: options.controlsAt,
+      cancel(reason) {
+        if (session.current !== entry) return
+        const position = entry.engine?.elapsed()
+        session.current = undefined
+        if (activeSession === entry) activeSession = undefined
+        entry.engine?.stop()
+        if (reason === 'unmount') return
+        setAnalyser(null)
+        setStatus('idle')
+        if (reason === 'interrupted') options.onInterrupt?.(position)
+      },
     }
-  }, []);
-
-  const stop = useCallback(() => {
-    generation.current += 1;
-    silence();
-    setPlaying(false);
-    setAnalyser(null);
-  }, [silence]);
-
-  const start = useCallback(async (mode, frame, kind = 'night-lights', groups) => {
-    if (!frame || !['night-lights', 'aerosols', 'co2'].includes(kind)) return false;
-    const token = ++generation.current;
-    setError('');
-    // Start from the user gesture; Tone.start unlocks browser audio.
-    try {
-      await Tone.start();
-      if (token !== generation.current) return false;
-      silence();
-      const current = { kind, mode, engine: null, reference: null, referenceGain: null, referenceAnalyser: null };
-      owner.current = current;
-      if (mode === 'reference') {
-        current.referenceAnalyser = new Tone.Analyser('waveform', 1024);
-        current.referenceGain = new Tone.Gain(mutedRef.current ? 0 : 0.10).toDestination();
-        current.referenceGain.connect(current.referenceAnalyser);
-        current.reference = new Tone.Oscillator({ frequency: 'D3', type: 'sine' }).connect(current.referenceGain);
-        current.reference.start();
-        setAnalyser(current.referenceAnalyser);
-      } else if (mode === 'changing') {
-        if (kind === 'night-lights') {
-          current.engine = new AevyraAudioEngine();
-          current.engine.applyFrameTelemetry(frame);
-          await current.engine.init();
-          if (token !== generation.current) return false;
-          current.engine.setMuted(mutedRef.current);
-          current.engine.start();
-        } else if (kind === 'aerosols') {
-          current.engine = new AerosolsAudioEngine();
-          current.engine.apply(mapAerosolFrame(frame));
-          await current.engine.init();
-          if (token !== generation.current) return false;
-          current.engine.setMuted(mutedRef.current);
-          current.engine.start();
-        } else {
-          current.engine = createCo2AudioEngine(Tone);
-          current.engine.setMuted(mutedRef.current);
-          await current.engine.start(frame, groups);
-          if (token !== generation.current) return false;
-        }
-        setAnalyser(current.engine.waveformAnalyser ?? null);
-      } else throw new Error('Unknown sound track');
-      if (token !== generation.current) return false;
-      setPlaying(true);
-      return true;
-    } catch (err) {
-      if (token === generation.current) {
-        silence();
-        setPlaying(false);
-        setAnalyser(null);
-        setError(err instanceof Error ? err.message : 'Unable to start audio');
-      }
-      return false;
+    session.current = activeSession = entry
+    function fail(cause) {
+      if (session.current !== entry) return
+      entry.cancel('interrupted')
+      setError(cause instanceof Error ? cause.message : 'Unable to start audio.')
     }
-  }, [silence]);
 
-  const applyFrame = useCallback((frame, kind, groups) => {
-    const current = owner.current;
-    if (!frame || !current || current.kind !== kind || current.mode !== 'changing') return;
     try {
-      if (kind === 'night-lights') current.engine.applyFrameTelemetry(frame);
-      else if (kind === 'aerosols') current.engine.apply(mapAerosolFrame(frame));
-      else if (kind === 'co2') current.engine.updateFrame(frame, groups);
-    } catch (err) { setError(err instanceof Error ? err.message : 'Invalid frame'); }
-  }, []);
+      configureAudioContext()
+      await unlockAudio()
+      if (session.current !== entry) return false
+      entry.engine = new GeneratedAudioEngine(kind, mode, {
+        duration: options.duration,
+        offset: options.offset,
+        speed: entry.speed,
+        controlsAt: options.controlsAt,
+        scanAt: options.scanAt,
+        haptics: hapticPlayer,
+        onEnd() {
+          entry.cancel()
+          options.onEnd?.()
+        },
+        onError: fail,
+      })
+      if (mode === 'changing') entry.engine.apply(mapReferenceFrame(kind, entry.frame))
+      entry.engine.setMuted(mutedRef.current)
+      entry.engine.resume()
+      setAnalyser(entry.engine.analyser)
+      setStatus('playing')
+      return true
+    } catch (cause) {
+      fail(cause)
+      return false
+    }
+  }, [stop])
 
-  useEffect(() => () => {
-    generation.current += 1;
-    silence();
-  }, [silence]);
+  const pause = useCallback(() => {
+    session.current?.engine?.pause()
+    setStatus('paused')
+  }, [])
 
-  return { start, stop, applyFrame, playing, muted, setMuted, error, analyser };
+  const seek = useCallback(position => session.current?.engine?.seek(position), [])
+  const setSpeed = useCallback(speed => {
+    const entry = session.current
+    if (!entry) return
+    entry.speed = speed
+    entry.engine?.setSpeed(speed)
+  }, [])
+
+  const resume = useCallback(() => {
+    const engine = session.current?.engine
+    if (!engine) return false
+    engine.resume()
+    setStatus('playing')
+    return true
+  }, [])
+
+  useEffect(() => () => session.current?.cancel('unmount'), [])
+
+  return {
+    start, stop, pause, resume, elapsed, applyFrame, seek, setSpeed, status,
+    playing: status === 'playing', muted, setMuted, error, analyser,
+  }
 }
