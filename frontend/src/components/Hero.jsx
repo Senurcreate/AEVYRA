@@ -49,7 +49,7 @@ function introSeen() {
   catch { return false }
 }
 
-export default function Hero() {
+export default function Hero({ story, storyCount }) {
   const reduced = useReducedMotion()
   const root = useRef(null)
   const poster = useRef(null)
@@ -57,6 +57,9 @@ export default function Hero() {
   const [ready, setReady] = useState(false)
   const [imageFailed, setImageFailed] = useState(false)
   const [videoFailed, setVideoFailed] = useState(false)
+  const artwork = story?.cover?.src
+  const image = artwork || project.heroImage
+  const hasVideo = !artwork && project.heroVideo && !reduced && !videoFailed
 
   function dismiss() {
     try { sessionStorage.setItem('aevyra-intro-seen', '1') }
@@ -84,36 +87,38 @@ export default function Hero() {
     return () => context.revert()
   }, [intro, ready, reduced])
 
-  return <section id="top" className="hero" aria-labelledby="hero-title" ref={root}>
+  return <section id="top" className={'hero' + (story ? ' story-hero' : '')} aria-labelledby="hero-title" ref={root}>
     {intro && <div className="intro-screen">
       <div className="intro-name" aria-hidden="true">AEVYRA</div>
       <p role="status">{ready ? 'Opening the experience' : 'Loading Earth imagery'}</p>
       <button type="button" onClick={dismiss}>Skip intro <ArrowDown size={14} aria-hidden="true" /></button>
     </div>}
     <div className="hero-frame shell" inert={intro}>
-      <div className="hero-context"><span className="signal-dot" /> NASA Space Apps Challenge <span className="hero-context-divider" /> Earth Jukebox</div>
-      <h1 id="hero-title" className="hero-wordmark">AEVYRA</h1>
-      <div className="hero-earth" aria-hidden="true">
-        <div className="hero-earth-drift">
-          {project.heroVideo && !reduced && !videoFailed &&
-            <video autoPlay muted loop playsInline poster={project.heroImage} onError={() => setVideoFailed(true)} className="hero-video" src={project.heroVideo} />}
-          <img ref={poster} src={project.heroImage} srcSet={project.heroImageSmall ? project.heroImageSmall + ' 640w, ' + project.heroImage + ' 1200w' : undefined} sizes={imageSizes} alt="" fetchPriority="high" width="1200" height="1062" onLoad={() => setReady(true)} onError={() => { setReady(true); setImageFailed(true) }} hidden={imageFailed} />
-          {!imageFailed && (!project.heroVideo || reduced || videoFailed) && <HeroAtmosphere reduced={reduced} />}
-          <svg className="horizon-particles" viewBox="0 0 1200 1062" fill="currentColor">
-            {horizonParticles.map(({ x, y, radius }, index) => <circle key={x} cx={x} cy={y} r={radius} style={{ animationDelay: -index * 0.73 + 's' }} />)}
-          </svg>
+      <div className="hero-context"><span className="signal-dot" /> NASA Space Apps Challenge <span className="hero-context-divider" /> {story?.title ?? 'Earth Jukebox'}</div>
+      <h1 id="hero-title" className="hero-wordmark">{story?.headline ?? 'AEVYRA'}</h1>
+      <div className={'hero-earth' + (artwork ? ' hero-story-art' : '')} aria-hidden="true">
+        <div className="hero-earth-parallax">
+          <div className="hero-earth-drift">
+            {hasVideo &&
+              <video autoPlay muted loop playsInline poster={project.heroImage} onError={() => setVideoFailed(true)} className="hero-video" src={project.heroVideo} />}
+            <img ref={poster} src={image} srcSet={!artwork && project.heroImageSmall ? project.heroImageSmall + ' 640w, ' + image + ' 1200w' : undefined} sizes={artwork ? undefined : imageSizes} alt="" fetchPriority="high" width={artwork ? undefined : 1200} height={artwork ? undefined : 1062} onLoad={() => setReady(true)} onError={() => { setReady(true); setImageFailed(true) }} hidden={imageFailed} />
+            {!artwork && !imageFailed && !hasVideo && <HeroAtmosphere reduced={reduced} />}
+            {!artwork && <svg className="horizon-particles" viewBox="0 0 1200 1062" fill="currentColor">
+              {horizonParticles.map(({ x, y, radius }, index) => <circle key={x} cx={x} cy={y} r={radius} style={{ animationDelay: -index * 0.73 + 's' }} />)}
+            </svg>}
+          </div>
         </div>
       </div>
       <div className="hero-message">
-        <p className="hero-tagline">Hear the Earth.<br /> Feel the Change.</p>
-        <p className="hero-intro">Earth is constantly changing. What if we could hear its story?</p>
-        <a className="primary-button" href="#experience">Explore Earth’s Symphony <ArrowDown size={16} aria-hidden="true" /></a>
+        {story ? <p className="hero-tagline">{story.subtitle}</p> : <h2 className="hero-tagline">Hear the Earth.<br /> Feel the Change.</h2>}
+        <p className="hero-intro">{story?.description ?? 'Earth is constantly changing. What if we could hear its story?'}</p>
+        <a className="primary-button" href={story ? '#experience' : '#earth-stories'}>{story?.cta ?? 'Choose an Earth Story'} <ArrowDown size={16} aria-hidden="true" /></a>
       </div>
-      <div className="hero-bottom">
+      {!story && <div className="hero-bottom">
         <a href="#story" className="scroll-cue"><MoveDown size={16} aria-hidden="true" /> <span>Scroll to explore</span></a>
         <span className="headphone-cue"><Headphones size={15} aria-hidden="true" /> Headphones recommended</span>
-        <span className="hero-years">2012 <span /> 2023</span>
-      </div>
+        <span className="hero-years">{storyCount} Earth Stories</span>
+      </div>}
     </div>
   </section>
 }

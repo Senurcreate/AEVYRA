@@ -7,6 +7,8 @@ const mode = import.meta.env?.VITE_DATA_MODE?.trim() || 'mock'
 export const localDataset = mode === 'mock' ? parseDataset(demoData, { demo: true })
   : mode === 'production' ? parseDataset(productionData) : null
 
+export const shouldUseBundledNightLights = mode === 'production' && productionData.records.length === 0
+
 export async function fetchEarthDataset({ signal, baseUrl = import.meta.env?.VITE_API_BASE_URL, origin = window.location.origin } = {}) {
   const configured = baseUrl?.trim()
   if (!configured) throw new Error('Set VITE_API_BASE_URL to connect to the backend.')

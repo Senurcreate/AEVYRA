@@ -31,11 +31,12 @@ function audioSource(source, base) {
   return null
 }
 
-export function parseDataset(input, { demo = false, base } = {}) {
+export function parseDataset(input, { demo = false, base, steps = YEARS } = {}) {
   if (!input || !Array.isArray(input.regions) || !Array.isArray(input.records)) {
     throw new Error('The dataset response must include regions and records arrays.')
   }
   const records = new Map()
+  const availableSteps = new Set(steps)
   const seenRegions = new Set(['global'])
   const regions = input.regions.filter(region => {
     if (!hasText(region?.id) || seenRegions.has(region.id) || !hasText(region.name) ||
@@ -46,8 +47,9 @@ export function parseDataset(input, { demo = false, base } = {}) {
   })
 
   for (const record of input.records) {
-    if (!YEARS.includes(record?.year) || !seenRegions.has(record.regionId)) continue
-    const key = JSON.stringify([record.regionId, record.year])
+    const step = record?.frameIndex ?? record?.year
+    if (!availableSteps.has(step) || !seenRegions.has(record.regionId)) continue
+    const key = JSON.stringify([record.regionId, step])
     if (records.has(key)) continue
     const measurement = hasText(record.name) && hasText(record.unit) && Number.isFinite(record.value)
       ? { name: record.name, unit: record.unit, value: record.value, referenceValue: Number.isFinite(record.referenceValue) ? record.referenceValue : null }
@@ -57,24 +59,28 @@ export function parseDataset(input, { demo = false, base } = {}) {
       ? { src, alt: record.image.alt, framing: optionalText(record.image.framing) || null }
       : null
     const audio = { reference: audioSource(record.audio?.reference, base), changing: audioSource(record.audio?.changing, base) }
+    const figures = Array.isArray(record.figures) ? record.figures.slice(0, 2).map(figure =>
+      Number.isFinite(figure?.value) ? { value: figure.value, unit: optionalText(figure.unit), category: optionalText(figure.category) } : null,
+    ) : []
     const story = optionalText(record.story)
     const explanation = optionalText(record.explanation)
-    if (!measurement && !image && !audio.reference && !audio.changing && !story && !explanation) continue
+    if (!measurement && !image && !audio.reference && !audio.changing && !figures.some(Boolean) && !story && !explanation) continue
     records.set(key, {
-      year: record.year, regionId: record.regionId, measurement, image, audio, explanation, story,
+      step, regionId: record.regionId, measurement, image, audio, figures, explanation, story,
     })
   }
 
   const sourceUrl = mediaUrl(input.source?.url, base)
+  const hasAudio = [...records.values()].some(({ audio }) => audio.reference || audio.changing)
   return {
-    demo, regions,
+    demo, regions, steps, hasAudio,
     title: optionalText(input.title) || 'Earth observation dataset',
     description: optionalText(input.description),
     source: hasText(input.source?.label) && sourceUrl ? { label: input.source.label, url: sourceUrl } : null,
     methodology: optionalText(input.methodology),
     baselineDescription: optionalText(input.baselineDescription),
     globeTexture: mediaUrl(input.globeTexture, base) || '/media/earth-map.webp',
-    getRecord: (year, regionId = 'global') => records.get(JSON.stringify([regionId, year])) ?? null,
+    getRecord: (step, regionId = 'global') => records.get(JSON.stringify([regionId, step])) ?? null,
   }
 }
 

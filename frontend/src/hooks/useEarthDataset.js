@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react'
-import { loadEarthDataset, localDataset } from '../services/earthApi.js'
+import { loadEarthDataset, localDataset, shouldUseBundledNightLights } from '../services/earthApi.js'
+import { nightLightsDataset, nightLightsDemoDataset } from '../data/mlDatasets.js'
 
-const initialState = { dataset: localDataset, status: localDataset ? 'ready' : 'loading', error: '' }
+const dataset = localDataset?.demo ? nightLightsDemoDataset : shouldUseBundledNightLights ? nightLightsDataset : localDataset
+const initialState = { dataset, status: dataset ? 'ready' : 'loading', error: '' }
 
-export function useEarthDataset() {
+export function useEarthDataset(enabled = true) {
   const [state, setState] = useState(initialState)
   const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
-    if (localDataset) return
+    if (!enabled || initialState.dataset) return
     const controller = new AbortController()
     loadEarthDataset(controller.signal).then(dataset => {
       if (!controller.signal.aborted) setState({ dataset, status: 'ready', error: '' })
@@ -20,7 +22,7 @@ export function useEarthDataset() {
       setState({ dataset: null, status: 'error', error: message })
     })
     return () => controller.abort()
-  }, [attempt])
+  }, [attempt, enabled])
 
   function retry() {
     setState(initialState)
